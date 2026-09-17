@@ -4,13 +4,12 @@
 
 **A full-stack real-time group chat app — JWT auth, live Socket.io messaging, and PostgreSQL history.**
 
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Node](https://img.shields.io/badge/node-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![React](https://img.shields.io/badge/react-19-20232a?logo=react&logoColor=61dafb)](https://react.dev)
 [![Socket.io](https://img.shields.io/badge/socket.io-4.x-010101?logo=socket.io)](https://socket.io)
 [![PostgreSQL](https://img.shields.io/badge/postgresql-14+-4169e1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
 
-[Live Demo](https://relay-chat-app.vercel.app/) · [Report a Bug](https://github.com/skinnyduck21/chat-app/issues)
+[Live Demo](https://relay-chat-app.vercel.app/) · [Report a Bug](https://github.com/keshavm21/chat-app/issues)
 
 </div>
 
@@ -85,8 +84,8 @@ relay/
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/skinnyduck21/chat-app.git
-cd relay-chat
+git clone https://github.com/keshavm21/chat-app.git
+cd chat-app
 
 cd server && npm install
 cd ../client && npm install
@@ -237,9 +236,3 @@ This keeps local development working while supporting Neon's `DATABASE_URL` in p
 2. Server broadcasts `user_typing` to all other clients on the first event of a burst, then starts a 3-second auto-clear timer
 3. After 3 seconds of silence, server broadcasts `user_stop_typing`
 4. On disconnect, the server immediately clears any in-progress typing state for that user
-
----
-
-## License
-
-MIT — see [LICENSE](./LICENSE) for details.
