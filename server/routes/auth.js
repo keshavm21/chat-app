@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import pool from '../db/connection.js';
 import { config } from '../config/env.js';
 import { AppError, ErrorCode } from '../lib/errors.js';
+import { loginSchema, signupSchema, validationError } from '../http/schemas.js';
 import { logger } from '../lib/logger.js';
 
 const router = express.Router();
@@ -12,11 +13,10 @@ const PG_UNIQUE_VIOLATION = '23505';
 
 // ─── POST /api/auth/signup ────────────────────────────────────────────────────
 router.post('/signup', async (req, res, next) => {
-  const { username, email, password } = req.body;
-
-  if (!username || !email || !password) {
-    return next(new AppError(400, ErrorCode.VALIDATION_ERROR, 'All fields are required.'));
-  }
+  const parsed = signupSchema.safeParse(req.body);
+  if (!parsed.success) return next(validationError(parsed.error));
+  // Trimmed and lowercased, so uniqueness (the pre-check and the constraints) ignores case.
+  const { username, email, password } = parsed.data;
 
   try {
     // Prevent duplicate username OR email in one query
@@ -63,11 +63,10 @@ router.post('/signup', async (req, res, next) => {
 
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
 router.post('/login', async (req, res, next) => {
-  const { email, password } = req.body;
-
-  if (!email || !password) {
-    return next(new AppError(400, ErrorCode.VALIDATION_ERROR, 'Email and password are required.'));
-  }
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) return next(validationError(parsed.error));
+  // The email is normalized the same way as at signup.
+  const { email, password } = parsed.data;
 
   try {
     const result = await pool.query(

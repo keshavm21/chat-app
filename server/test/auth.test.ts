@@ -101,6 +101,85 @@ describe('POST /api/auth/signup', () => {
     expect(statuses).toEqual([201, 409, 409, 409, 409]);
     expect(await userCount()).toBe(1);
   });
+
+  const usernameRule = 'Username must be 3–32 characters: letters, digits or underscores.';
+
+  // Audit §4.7: a username over 50 characters used to reach the database and return 500.
+  it.each([
+    ['too short', 'ab'],
+    ['33 characters', 'a'.repeat(33)],
+    ['51 characters, audit §4.7', 'a'.repeat(51)],
+    ['with a space', 'has space'],
+    ['with a hyphen', 'has-hyphen'],
+    ['with a non-ASCII letter', 'élise'],
+  ])('rejects an invalid username (%s) with 400 VALIDATION_ERROR', async (_case, username) => {
+    const res = await request(server.httpServer).post('/api/auth/signup').send({ ...alice, username });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: { code: 'VALIDATION_ERROR', message: usernameRule, details: [{ field: 'username', message: usernameRule }] },
+    });
+    expect(await userCount()).toBe(0);
+  });
+
+  it.each(['abc', 'x'.repeat(32), 'under_score_42'])('accepts the username %s', async (username) => {
+    const res = await request(server.httpServer).post('/api/auth/signup').send({ ...alice, username });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.username).toBe(username);
+  });
+
+  it('stores the username trimmed and lowercased, so another case of it is a duplicate', async () => {
+    const res = await request(server.httpServer).post('/api/auth/signup').send({ ...alice, username: ' Alice_1 ' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.username).toBe('alice_1');
+    expect(jwt.verify(res.body.token, config.jwtSecret)).toMatchObject({ username: 'alice_1' });
+
+    const duplicate = await request(server.httpServer)
+      .post('/api/auth/signup')
+      .send({ ...alice, username: 'alice_1', email: 'other@example.test' });
+
+    expect(duplicate.status).toBe(409);
+    expect(await userCount()).toBe(1);
+  });
+
+  it('stores the email trimmed and lowercased, so another case of it is a duplicate', async () => {
+    const res = await request(server.httpServer)
+      .post('/api/auth/signup')
+      .send({ ...alice, email: ' Alice@Example.test ' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.email).toBe('alice@example.test');
+
+    const duplicate = await request(server.httpServer)
+      .post('/api/auth/signup')
+      .send({ ...alice, username: 'someone_else', email: 'ALICE@EXAMPLE.TEST' });
+
+    expect(duplicate.status).toBe(409);
+    expect(await userCount()).toBe(1);
+  });
+
+  it.each([
+    ['not an address', 'not-an-email', 'Email must be a valid email address.'],
+    ['missing its domain', 'alice@', 'Email must be a valid email address.'],
+    ['101 characters', `${'a'.repeat(88)}@example.test`, 'Email must be at most 100 characters.'],
+  ])('rejects an invalid email (%s) with 400 VALIDATION_ERROR', async (_case, email, message) => {
+    const res = await request(server.httpServer).post('/api/auth/signup').send({ ...alice, email });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { code: 'VALIDATION_ERROR', message, details: [{ field: 'email', message }] } });
+    expect(await userCount()).toBe(0);
+  });
+
+  it('accepts an email of exactly 100 characters', async () => {
+    const email = `${'a'.repeat(87)}@example.test`;
+
+    const res = await request(server.httpServer).post('/api/auth/signup').send({ ...alice, email });
+
+    expect(res.status).toBe(201);
+    expect(res.body.user.email).toBe(email);
+  });
 });
 
 describe('POST /api/auth/login', () => {
@@ -133,5 +212,19 @@ describe('POST /api/auth/login', () => {
     expect(wrongPassword.status).toBe(401);
     expect(unknownEmail.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' } });
     expect(wrongPassword.body).toEqual(unknownEmail.body);
+  });
+
+  it('normalizes the email the same way as signup before the lookup', async () => {
+    const signup = await request(server.httpServer)
+      .post('/api/auth/signup')
+      .send({ ...alice, email: 'Alice@Example.test' })
+      .expect(201);
+
+    const res = await request(server.httpServer)
+      .post('/api/auth/login')
+      .send({ email: ' ALICE@example.test ', password: alice.password });
+
+    expect(res.status).toBe(200);
+    expect(res.body.user).toEqual(signup.body.user);
   });
 });
