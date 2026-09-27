@@ -1,6 +1,6 @@
 # ADR 0001: Fresh database and the `0002` migration layout
 
-- **Status:** Accepted (2026-09-27). Implemented in Phase 1 on the `phase-1` branch; reaches production at the cutover.
+- **Status:** Accepted (2026-09-27). Implemented in Phase 1; in production since the cutover on 2026-09-27.
 - **Decision record:** D6 in `docs/v2-design.md` §10; `docs/phase-1-implementation-plan.md` §2, decisions 1–3.
 
 ## Context
@@ -25,5 +25,5 @@ V2 replaces the single-room schema (`users` with a `password` column, `messages`
 
 - Every production account and message is discarded at the cutover. Users sign up again.
 - Local databases can be reset at any time (`docker compose down -v`), and tests truncate every V2 table and re-seed `#general` before each test.
-- Production cannot receive Phase 1 until the cutover, so Phase 1 is developed on the long-lived `phase-1` branch; Phase 0 fixes still go to `main` and are merged into `phase-1`.
+- Production could not receive Phase 1 before the cutover, so Phase 1 was developed on the long-lived `phase-1` branch, with Phase 0 fixes going to `main` and merged into `phase-1`. The cutover ran on 2026-09-27.
 - A migration's down section is kept exact, which the scratch-database check (up, down, dump comparison, up again) verified for `0002`.

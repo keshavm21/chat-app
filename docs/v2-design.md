@@ -1,6 +1,6 @@
 # Relay — V2 Design
 
-**Status:** Approved. **Phases 0 and 1 are complete (2026-09-27).** Phase 1 is on the `phase-1` branch and reaches production at a separate cutover (see [§9](#9-implementation-roadmap)). Decisions D1–D17 were approved on 2026-09-27 (see [§10](#10-decision-record)). D6 was revised the same day: existing data is not preserved, and V2 starts with a fresh database. D5 and D9 are **flexible implementation choices**, not hard requirements. One item remains open: how session cookies will work in production while the custom domain is deferred ([§6](#6-security-model)).
+**Status:** Approved. **Phases 0 and 1 are complete (2026-09-27), and Phase 1 is in production** since the cutover the same day (see [§9](#9-implementation-roadmap)). Decisions D1–D17 were approved on 2026-09-27 (see [§10](#10-decision-record)). D6 was revised the same day: existing data is not preserved, and V2 starts with a fresh database. D5 and D9 are **flexible implementation choices**, not hard requirements. One item remains open: how session cookies will work in production while the custom domain is deferred ([§6](#6-security-model)).
 
 **Based on:** `docs/current-state-audit.md` (repository at commit `2e72c1d`).
 
@@ -637,9 +637,9 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** characterization tests of the current auth, messages and socket behavior.
 - **Done when:** CI is green on every PR, current behavior is covered by tests, and the fixes are deployed.
 
-### Phase 1 — Data model (fresh database, D6) — ✅ complete
+### Phase 1 — Data model (fresh database, D6) — ✅ complete, in production
 
-- **Status:** completed 2026-09-27 on the long-lived `phase-1` branch, as planned in `docs/phase-1-implementation-plan.md` (completion record in its §15). Production stays on Phase 0 until the cutover in that plan's §13, which the maintainer schedules. Decisions are recorded in `docs/adr/`: `0002` replaces the Phase 0 tables (ADR 0001), int4 identity IDs (ADR 0002), and `seq` with a row-lock counter now, with `rev` left to the Phase 5 decision point (ADR 0003). Emails are limited to 100 characters.
+- **Status:** completed 2026-09-27 on the long-lived `phase-1` branch, as planned in `docs/phase-1-implementation-plan.md` (completion record in its §15), and put in production the same day by the cutover in that plan's §13: a new Neon database, a rotated `JWT_SECRET`, and `phase-1` merged into `main`. Decisions are recorded in `docs/adr/`: `0002` replaces the Phase 0 tables (ADR 0001), int4 identity IDs (ADR 0002), and `seq` with a row-lock counter now, with `rev` left to the Phase 5 decision point (ADR 0003). Emails are limited to 100 characters.
 - **Goal:** the V2 schema, built from scratch.
 - **Changes:**
   - Migrations that drop the Phase 0 tables and create the V2 tables from §4: `users`, `conversations`, `direct_conversations`, `conversation_members` and `messages` (with `seq`). `sessions` follows in Phase 2.
@@ -811,6 +811,6 @@ All decisions were approved on 2026-09-27.
 
 1. ~~Implement Phase 0~~ — done 2026-09-27 (`docs/phase-0-implementation-plan.md`, §16).
 2. ~~Write and approve `docs/phase-1-implementation-plan.md` and implement Phase 1~~ — done 2026-09-27 on the `phase-1` branch (that plan's §15).
-3. **Decide when to run the Phase 1 production cutover** (the Phase 1 plan's §13).
+3. ~~Run the Phase 1 production cutover~~ — done 2026-09-27 (the Phase 1 plan's §15).
 4. **Write and approve `docs/phase-2-implementation-plan.md`** before any Phase 2 code (handoff in the Phase 1 plan's §16).
 5. **Choose the production cookie topology (§6)** before Phase 2 is deployed to production.
