@@ -39,10 +39,37 @@ describe('POST /api/auth/signup', () => {
       username: 'alice',
     });
 
-    const { rows } = await pool.query('SELECT password FROM users WHERE id = $1', [res.body.user.id]);
-    expect(rows[0].password).not.toBe(alice.password);
-    expect(rows[0].password).toMatch(/^\$2[aby]\$10\$/);
-    expect(await bcrypt.compare(alice.password, rows[0].password)).toBe(true);
+    const { rows } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [res.body.user.id]);
+    expect(rows[0].password_hash).not.toBe(alice.password);
+    expect(rows[0].password_hash).toMatch(/^\$2[aby]\$10\$/);
+    expect(await bcrypt.compare(alice.password, rows[0].password_hash)).toBe(true);
+  });
+
+  it('adds the new user to #general as a member who has already read its earlier messages', async () => {
+    await pool.query(`UPDATE conversations SET last_seq = 7 WHERE name = 'general'`);
+
+    const res = await request(server.httpServer).post('/api/auth/signup').send(alice).expect(201);
+
+    const { rows } = await pool.query(
+      `SELECT c.name, m.role, m.last_read_seq
+       FROM conversation_members m JOIN conversations c ON c.id = m.conversation_id
+       WHERE m.user_id = $1`,
+      [res.body.user.id],
+    );
+    expect(rows).toEqual([{ name: 'general', role: 'member', last_read_seq: 7 }]);
+  });
+
+  it('creates neither the user nor the membership if either insert fails', async () => {
+    const logged = vi.spyOn(logger, 'error');
+    // Without #general, adding the membership fails after the user was inserted.
+    await pool.query(`DELETE FROM conversations WHERE name = 'general'`);
+
+    const res = await request(server.httpServer).post('/api/auth/signup').send(alice);
+
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Server error during signup.' } });
+    expect(await userCount()).toBe(0);
+    expect(logged).toHaveBeenCalledOnce();
   });
 
   it('rejects a duplicate email with 409', async () => {
@@ -135,6 +162,9 @@ describe('POST /api/auth/signup', () => {
     expect(res.status).toBe(201);
     expect(res.body.user.username).toBe('alice_1');
     expect(jwt.verify(res.body.token, config.jwtSecret)).toMatchObject({ username: 'alice_1' });
+    // The display name keeps the username as typed (trimmed).
+    const { rows } = await pool.query('SELECT username, display_name FROM users');
+    expect(rows).toEqual([{ username: 'alice_1', display_name: 'Alice_1' }]);
 
     const duplicate = await request(server.httpServer)
       .post('/api/auth/signup')
