@@ -1,8 +1,10 @@
 // server/socket/socketHandler.js
 import jwt  from 'jsonwebtoken';
-import pool from '../db/connection.js';
 import { config } from '../config/env.js';
+import { withTransaction } from '../db/transaction.js';
 import { logger } from '../lib/logger.js';
+import { allocateSeq, findGeneralId } from '../repositories/conversations.js';
+import { createMessage } from '../repositories/messages.js';
 
 export default function socketHandler(io) {
 
@@ -42,24 +44,17 @@ export default function socketHandler(io) {
       if (!content || typeof content !== 'string' || !content.trim()) return;
 
       try {
-        const { rows } = await pool.query(
-          `INSERT INTO messages (user_id, username, content)
-           VALUES ($1, $2, $3)
-           RETURNING id, user_id, username, content, created_at`,
-          [socket.user.id, socket.user.username, content.trim()]
-        );
-
-        const row = rows[0];
-
-        // Broadcast to ALL connected clients (including the sender so their
-        // message appears in the same pipeline as everyone else's).
-        io.emit('message', {
-          id:        row.id,
-          userId:    row.user_id,
-          username:  row.username,
-          content:   row.content,
-          createdAt: row.created_at,
+        // Everything goes to #general for now. allocateSeq() locks #general's row
+        // until COMMIT, so concurrent sends get consecutive seqs in commit order.
+        const message = await withTransaction(async (client) => {
+          const conversationId = await findGeneralId(client);
+          const seq = await allocateSeq(client, conversationId);
+          return createMessage(client, { conversationId, seq, authorId: socket.user.id, content: content.trim() });
         });
+
+        // Only after COMMIT: broadcast to ALL connected clients (including the sender
+        // so their message appears in the same pipeline as everyone else's).
+        io.emit('message', message);
       } catch (err) {
         log.error({ err }, 'DB error saving message');
         // Only tell the sender — don't crash the whole server.

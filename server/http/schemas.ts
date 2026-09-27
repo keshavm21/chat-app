@@ -11,22 +11,27 @@ const body = { error: 'Request body must be a JSON object.' };
 const email = z.string({ error: 'Email is required.' }).trim().toLowerCase();
 const password = z.string({ error: 'Password is required.' }).min(1, 'Password is required.');
 
-export const signupSchema = z.object(
-  {
-    username: z
-      .string({ error: 'Username is required.' })
-      .trim()
-      .toLowerCase()
-      .regex(USERNAME_PATTERN, 'Username must be 3–32 characters: letters, digits or underscores.'),
-    email: email.pipe(
-      z
-        .email('Email must be a valid email address.')
-        .max(EMAIL_MAX_LENGTH, `Email must be at most ${EMAIL_MAX_LENGTH} characters.`),
-    ),
-    password,
-  },
-  body,
-);
+export const signupSchema = z
+  .object(
+    {
+      username: z
+        .string({ error: 'Username is required.' })
+        .trim()
+        .refine(
+          (typed) => USERNAME_PATTERN.test(typed.toLowerCase()),
+          'Username must be 3–32 characters: letters, digits or underscores.',
+        ),
+      email: email.pipe(
+        z
+          .email('Email must be a valid email address.')
+          .max(EMAIL_MAX_LENGTH, `Email must be at most ${EMAIL_MAX_LENGTH} characters.`),
+      ),
+      password,
+    },
+    body,
+  )
+  // The username is stored lowercase; the display name keeps it as typed.
+  .transform(({ username, ...rest }) => ({ ...rest, username: username.toLowerCase(), displayName: username }));
 
 // Login only normalizes the email: an address that could never have signed up
 // simply matches no user.

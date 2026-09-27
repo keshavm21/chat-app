@@ -2,10 +2,13 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool from '../db/connection.js';
+import { withTransaction } from '../db/transaction.js';
 import { config } from '../config/env.js';
 import { AppError, ErrorCode } from '../lib/errors.js';
 import { loginSchema, signupSchema, validationError } from '../http/schemas.js';
 import { logger } from '../lib/logger.js';
+import { createUser, findUserByEmail, isEmailOrUsernameTaken } from '../repositories/users.js';
+import { addMember, findGeneralId } from '../repositories/conversations.js';
 
 const router = express.Router();
 const SALT_ROUNDS = 10;
@@ -16,29 +19,22 @@ router.post('/signup', async (req, res, next) => {
   const parsed = signupSchema.safeParse(req.body);
   if (!parsed.success) return next(validationError(parsed.error));
   // Trimmed and lowercased, so uniqueness (the pre-check and the constraints) ignores case.
-  const { username, email, password } = parsed.data;
+  const { username, displayName, email, password } = parsed.data;
 
   try {
     // Prevent duplicate username OR email in one query
-    const existing = await pool.query(
-      'SELECT id FROM users WHERE email = $1 OR username = $2',
-      [email, username]
-    );
-
-    if (existing.rows.length > 0) {
+    if (await isEmailOrUsernameTaken(pool, email, username)) {
       return next(new AppError(409, ErrorCode.CONFLICT, 'Email or username is already taken.'));
     }
 
-    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+    const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const result = await pool.query(
-      `INSERT INTO users (username, email, password)
-       VALUES ($1, $2, $3)
-       RETURNING id, username, email`,
-      [username, email, hashedPassword]
-    );
-
-    const newUser = result.rows[0];
+    // The user and their #general membership are created together or not at all.
+    const newUser = await withTransaction(async (client) => {
+      const user = await createUser(client, { username, email, displayName, passwordHash });
+      await addMember(client, await findGeneralId(client), user.id, 'member');
+      return user;
+    });
 
     const token = jwt.sign(
       { id: newUser.id, username: newUser.username },
@@ -69,19 +65,15 @@ router.post('/login', async (req, res, next) => {
   const { email, password } = parsed.data;
 
   try {
-    const result = await pool.query(
-      'SELECT id, username, email, password FROM users WHERE email = $1',
-      [email]
-    );
+    const user = await findUserByEmail(pool, email);
 
     // ⚠️  Intentionally same error for "not found" and "wrong password"
     //     — prevents attackers from discovering which emails are registered
-    if (result.rows.length === 0) {
+    if (!user) {
       return next(new AppError(401, ErrorCode.INVALID_CREDENTIALS, 'Invalid email or password.'));
     }
 
-    const user = result.rows[0];
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
 
     if (!isMatch) {
       return next(new AppError(401, ErrorCode.INVALID_CREDENTIALS, 'Invalid email or password.'));

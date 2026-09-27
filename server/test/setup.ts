@@ -10,6 +10,7 @@ assertTestDatabaseUrl(pool.options.connectionString);
 beforeEach(async () => {
   // Checked inside the database as well: if the connected database is not a
   // *_test database, the exception aborts the whole statement before TRUNCATE.
+  // Then #general is re-seeded with the same statement as migration 0002.
   await pool.query(`
     DO $$
     BEGIN
@@ -17,7 +18,8 @@ beforeEach(async () => {
         RAISE EXCEPTION 'Refusing to truncate tables in non-test database %', current_database();
       END IF;
     END $$;
-    TRUNCATE users, messages RESTART IDENTITY CASCADE;
+    TRUNCATE users, conversations, direct_conversations, conversation_members, messages RESTART IDENTITY CASCADE;
+    INSERT INTO conversations (type, visibility, name) VALUES ('channel', 'public', 'general');
   `);
 });
 
