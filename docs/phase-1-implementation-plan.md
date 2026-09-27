@@ -1,6 +1,6 @@
 # Relay — Phase 1 Implementation Plan
 
-**Status:** ✅ **Complete** (2026-09-27) on the `phase-1` branch. Milestones M0–M4 are done and verified; see [§15 Completion record](#15-completion-record) and [§16 Handoff](#16-handoff-to-the-cutover-and-phase-2). Production stays on Phase 0 until the cutover ([§13](#13-production-cutover-runbook-prepared-not-executed-in-phase-1)), which the maintainer schedules.
+**Status:** ✅ **Complete and in production** (2026-09-27). Milestones M0–M4 are done and verified, and the maintainer ran the production cutover ([§13](#13-production-cutover-runbook)) the same day; see [§15 Completion record](#15-completion-record) and [§16 Handoff](#16-handoff-to-phase-2).
 **History:** approved 2026-09-27; the maintainer's decisions on the open questions are recorded in [§14](#14-decisions-confirmed-at-approval).
 **Scope source:** `docs/v2-design.md` (§4 data model, §5 message delivery, §9 Phase 1) and the handoff in `docs/phase-0-implementation-plan.md` §17, shaped by the four decisions in §2.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
@@ -223,7 +223,7 @@ Why this order: M1 adds the application-level rules first, on a schema that alre
 
 **Definition of done**
 - [x] Every item in §11 is checked.
-- [ ] The maintainer decides when to run the production cutover (§13). *(Open: handed over in §16.)*
+- [x] The maintainer decides when to run the production cutover (§13). *(Run on 2026-09-27; see §15.)*
 
 ---
 
@@ -257,7 +257,9 @@ Why this order: M1 adds the application-level rules first, on a schema that alre
 
 ---
 
-## 13. Production cutover runbook (prepared, not executed in Phase 1)
+## 13. Production cutover runbook
+
+**Run by the maintainer on 2026-09-27**; the record is in §15.
 
 When the maintainer decides to move production to the V2 schema. Reviewed at the end of Phase 1 (2026-09-27): the steps below add the migration precondition, the deploy order, the draft-PR merge, a check of the seed, and a rollback.
 
@@ -308,6 +310,11 @@ Phase 1 was completed on 2026-09-27 on the `phase-1` branch. One task per commit
 - **Rollback:** `0002` down restores the Phase 0 tables and up re-applies, on scratch databases (schema dump identical to a `0001`-only database) and on the fresh clone's `relay_dev`.
 - **Production:** `main` contains no Phase 1 code (only migration `0001`; its one commit since the plan is the Phase 0 fix above). Vercel built only previews of `phase-1`. The production database was never connected to.
 
+**Production cutover (2026-09-27)**
+- **Run by the maintainer, following §13:** a new Neon database, connected through its direct (unpooled) connection string and built by `0001` + `0002`; `DATABASE_URL` and a new `JWT_SECRET` set in Render; PR #1 merged into `main` (merge commit `abab4b9`), which Render and Vercel deployed. Smoke test: two new accounts exchanged messages, and both saw them.
+- **Found in the smoke test: reloading `/chat` returned Vercel's 404 page.** The client uses `BrowserRouter`, the build contains only `index.html`, `favicon.svg` and `assets/`, and there was no rewrite, so Vercel looked for a file named `chat`. The bug predates Phase 1 (the repo never had a `vercel.json`), and the local checks could not show it, because Vite's dev server serves `index.html` for every path. Fixed on `main` by `client/vercel.json`, which rewrites every path that is not a file to `/index.html`. Checked with Vercel's routing library (`@vercel/routing-utils`: files first, then the rewrite; assets and the favicon are still served as files) and in headless Chrome against the production build served with the same rules (reloading `/chat` keeps the chat and its history; `/chat` while logged out redirects to `/login`).
+- **Remaining:** reload `/chat` on the live site once the fix is deployed, and delete the old database (step 7) once the new one is confirmed.
+
 **Final state:** 124 server tests in 9 files (auth, errors, messages, socket, ordering, schema, env, logger, pool). Lint, typecheck and build clean in both projects. No dependencies were added in Phase 1.
 
 **Known issues carried forward**
@@ -322,13 +329,13 @@ Phase 1 was completed on 2026-09-27 on the `phase-1` branch. One task per commit
 
 ---
 
-## 16. Handoff to the cutover and Phase 2
+## 16. Handoff to Phase 2
 
-**Starting point:** `phase-1` as recorded in §15: the V2 schema from `docs/v2-design.md` §4 (without `sessions` and `rev`), and the single-room app running on `#general` with gapless per-conversation `seq`. Production still runs Phase 0 from `main`.
+**Starting point:** `main`, which runs in production: Phase 1 as recorded in §15 (merged from `phase-1`) plus the Vercel rewrite. It has the V2 schema from `docs/v2-design.md` §4 (without `sessions` and `rev`), and the single-room app running on `#general` with gapless per-conversation `seq`.
 
 **Decisions for the maintainer**
-1. **When to run the production cutover (§13):** before Phase 2 starts, or later. Until then, Phase 0 fixes go to `main` and `main` is merged into `phase-1`.
-2. **Where Phase 2 is developed:** on `phase-1` if the cutover has not happened (production must not receive Phase 2 before the cookie topology is chosen), or on a new branch from `main` after it.
+1. ~~When to run the production cutover (§13)~~ — done 2026-09-27.
+2. **Where Phase 2 is developed:** `main` deploys to production again, and production must not receive Phase 2 before the cookie topology is chosen. So Phase 2 needs a long-lived branch from `main`, as Phase 1 had `phase-1`, unless the topology is settled first. The Phase 2 plan decides this.
 3. **The production cookie topology** (`docs/v2-design.md` §6) must be chosen before Phase 2 is deployed to production.
 
 **First step of Phase 2:** write `docs/phase-2-implementation-plan.md` in the same format as this plan, and get it approved before any Phase 2 code.

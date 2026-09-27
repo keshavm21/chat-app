@@ -9,15 +9,15 @@ Relay: a single-room real-time group chat. Two independent npm projects, no root
 - `server/` — Express 5 + Socket.io 4 + `pg` (PostgreSQL), ESM (`"type": "module"`). Existing code is JS; TypeScript is set up incrementally (`allowJs`, `checkJs: false`, `strict`) so new files can be `.ts`. Do not convert existing JS files.
 - `client/` — React 19 + Vite + Tailwind v3 + React Router 7, JSX, with the same incremental TypeScript setup (`noEmit`; typecheck only)
 
-Deployed as server on Render, client on Vercel, DB on Neon.
+Deployed as server on Render and client on Vercel (both deploy `main`), DB on Neon.
 
 ## Project status
 
 Relay is being evolved into Relay V2 in phases (`docs/v2-design.md` §9; decisions D1–D17 in §10).
 
 - **Phase 0 (foundation) is complete** (2026-09-27): see `docs/phase-0-implementation-plan.md`, §16 for the completion record and known issues.
-- **Phase 1 (V2 data model on a fresh database, D6) is complete** (2026-09-27) on the long-lived `phase-1` branch: see `docs/phase-1-implementation-plan.md`, §15 for the completion record and known issues, and `docs/adr/` for its decisions. Production (Render deploys `main`) is still on Phase 0 until the maintainer runs the cutover (plan §13). Draft PR #1 (`phase-1 → main`) only runs CI; do not merge it outside the cutover.
-- **Next:** the maintainer decides on the cutover and on the Phase 2 plan (`docs/phase-2-implementation-plan.md`, approved before any Phase 2 code; the Phase 1 plan's §16 is the handoff). Until the cutover, Phase 0 fixes go to `main` and `main` is merged into `phase-1`.
+- **Phase 1 (V2 data model on a fresh database, D6) is complete and in production** (2026-09-27). It was built on the `phase-1` branch and reached production by the cutover in `docs/phase-1-implementation-plan.md` §13: a new Neon database, a rotated `JWT_SECRET`, and PR #1 merged into `main`. See that plan's §15 for the completion record, the cutover and known issues, and `docs/adr/` for its decisions.
+- **Next: Phase 2.** Write `docs/phase-2-implementation-plan.md` and get it approved before any Phase 2 code; the Phase 1 plan's §16 is the handoff. `main` is production again, and Phase 2 must not reach production before the cookie topology is chosen (`docs/v2-design.md` §6), so it will need its own branch; the Phase 2 plan decides.
 - Working rules that held for Phases 0 and 1: one task per commit; don't implement items from a plan's deferred list; if a step needs something the plan doesn't list, stop and ask. Never connect to or modify the production database.
 
 ## Commands
@@ -98,4 +98,4 @@ Typing is debounced server-side: a per-user timer map broadcasts `user_typing` o
 
 **Socket lifecycle:** `client/src/socket.js` is a singleton with `autoConnect: false`. `client/src/pages/Chat.jsx` calls `socket.connect()` on mount, registers listeners, and `off`s them + disconnects on unmount; a `connect_error` (e.g. expired token) logs the user out. Add new listeners inside that same effect and remove them in its cleanup.
 
-**Routing** (`client/src/App.jsx`): `/` Landing, `/login` and `/signup` wrapped in `GuestRoute` (redirects authed users to `/chat`), `/chat` wrapped in `ProtectedRoute` (redirects to `/login`).
+**Routing** (`client/src/App.jsx`): `/` Landing, `/login` and `/signup` wrapped in `GuestRoute` (redirects authed users to `/chat`), `/chat` wrapped in `ProtectedRoute` (redirects to `/login`). These routes exist only in the client (`BrowserRouter`): on Vercel, `client/vercel.json` rewrites every path that is not a file to `index.html`, without which reloading `/chat` is a 404. Vite's dev server does this by itself, so local runs never show it.

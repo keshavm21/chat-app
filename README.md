@@ -45,7 +45,7 @@ Relay is being evolved into **Relay V2**: public and private channels, direct me
 | Phase | Status |
 |---|---|
 | **0 — Foundation:** migrations, TypeScript tooling, integration tests, CI, config validation, error envelope, structured logging, graceful shutdown | ✅ Complete |
-| **1 — V2 data model** on a fresh database: channels, DMs and memberships in the schema, gapless per-conversation message order, signup validation | ✅ Complete on the `phase-1` branch. Production still runs Phase 0 until the cutover |
+| **1 — V2 data model** on a fresh database: channels, DMs and memberships in the schema, gapless per-conversation message order, signup validation | ✅ Complete, in production since 2026-09-27 |
 | 2–8 — sessions, conversations, messaging, sync, awareness, editing, hardening | Planned |
 
 - [Current-state audit](./docs/current-state-audit.md) — the analysis the V2 work starts from
@@ -83,6 +83,7 @@ chat-app/
 ├── .env.example                     — server environment variables
 ├── docs/                            — audit, V2 design, phase plans, ADRs
 ├── client/                          ← React frontend (Vite)
+│   ├── vercel.json                  — serves index.html for every client route on Vercel
 │   └── src/
 │       ├── api/axios.js             — Axios instance with JWT interceptor
 │       ├── components/              — ProtectedRoute, GuestRoute
@@ -197,7 +198,7 @@ cd ../client && npm run lint && npm run typecheck && npm run build
 
 3. Use the connection string as `DATABASE_URL` in the Render environment variables (below).
 
-> The live demo's database was created before migrations existed and still runs Phase 0, so don't run migrations against it. Production moves to the V2 schema with a new, empty database, following the cutover runbook in the [Phase 1 plan, §13](./docs/phase-1-implementation-plan.md#13-production-cutover-runbook-prepared-not-executed-in-phase-1).
+> Production has run on a database built by these migrations since the Phase 1 cutover on 2026-09-27. To move production to a new database again, follow the cutover runbook in the [Phase 1 plan, §13](./docs/phase-1-implementation-plan.md#13-production-cutover-runbook): it also covers rotating `JWT_SECRET`.
 
 ### Render — Express server
 
@@ -229,6 +230,8 @@ On every deploy Render sends the old instance `SIGTERM`. The server shuts down g
 
 3. Build command: `npm run build` · Output directory: `dist`.
 4. Copy the Vercel URL back into Render's `CLIENT_URL` variable and redeploy.
+
+`client/vercel.json` rewrites every path that is not a file to `/index.html`, so reloading the page or opening `/chat`, `/login` or `/signup` directly loads the app, and React Router shows the page. Without it, Vercel answers those paths with a 404.
 
 ---
 
