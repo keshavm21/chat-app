@@ -3,7 +3,7 @@ import pool from '../db/connection.js';
 import { withTransaction } from '../db/transaction.js';
 import { MESSAGE_MAX_LENGTH } from '../lib/limits.js';
 import { logger } from '../lib/logger.js';
-import { hashSessionToken, sessionCookie } from '../lib/sessions.js';
+import { hashSessionToken, sessionCookie, sessionRoom } from '../lib/sessions.js';
 import { allocateSeq, findGeneralId, markRead } from '../repositories/conversations.js';
 import { createMessage } from '../repositories/messages.js';
 import { findSessionUser } from '../repositories/sessions.js';
@@ -50,6 +50,9 @@ export default function socketHandler(io) {
     // Every log line for this connection carries who it is.
     const log = logger.child({ socketId: socket.id, userId: socket.user.id, username: socket.user.username });
     log.info('Socket connected');
+
+    // When the session ends (logout, the sweep), all of its sockets are disconnected through this room.
+    socket.join(sessionRoom(socket.sessionHash));
 
     // Tell everyone the new count (including the arriving user).
     io.emit('online_count', io.sockets.sockets.size);
