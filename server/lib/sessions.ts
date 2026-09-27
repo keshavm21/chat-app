@@ -17,6 +17,16 @@ export function hashSessionToken(token: string): Buffer {
   return createHash('sha256').update(token).digest();
 }
 
+export const SESSION_ROOM_PREFIX = 'session:';
+
+/**
+ * The Socket.io room every socket of a session joins, so that ending the session can
+ * disconnect them all. Named by the token's hash, never by the token.
+ */
+export function sessionRoom(tokenHash: Buffer): string {
+  return `${SESSION_ROOM_PREFIX}${tokenHash.toString('hex')}`;
+}
+
 /**
  * The session cookie for a NODE_ENV. In production it is `__Host-relay_session`: the
  * prefix makes browsers insist on Secure, Path=/ and no Domain. Elsewhere it is

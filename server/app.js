@@ -16,30 +16,13 @@ import { logger }       from './lib/logger.js';
 // Builds the Express app, HTTP server and Socket.io server without listening.
 // index.js starts it for real; tests create their own instances.
 export function createApp() {
-  // ── Express app ──────────────────────────────────────────────────────────────
   const app = express();
 
   const CLIENT_URL = config.clientUrl;
 
-  // First, so every request (including CORS preflights and errors) gets one log line.
-  app.use(pinoHttp({ logger }));
-  app.use(cors({
-    origin: CLIENT_URL,
-    credentials: true,
-  }));
-  app.use(express.json());
-
-  app.use('/api/auth',     authRoutes);
-  app.use('/api/messages', messagesRoutes);
-
-  app.get('/api/ping', (_req, res) => res.json({ message: 'Server is alive' }));
-
-  // Must come after every route: unmatched /api requests → 404, then all errors → JSON envelope.
-  app.use('/api', notFound);
-  app.use(errorHandler);
-
   // ── HTTP server + Socket.io ──────────────────────────────────────────────────
   // Socket.io needs a raw http.Server — it can't be attached to app directly.
+  // Created before the routes, which need `io` (logout disconnects sockets).
   const httpServer = createServer(app);
 
   const io = new Server(httpServer, {
@@ -51,6 +34,24 @@ export function createApp() {
   });
 
   socketHandler(io);
+
+  // ── Express app ──────────────────────────────────────────────────────────────
+  // First, so every request (including CORS preflights and errors) gets one log line.
+  app.use(pinoHttp({ logger }));
+  app.use(cors({
+    origin: CLIENT_URL,
+    credentials: true,
+  }));
+  app.use(express.json());
+
+  app.use('/api/auth',     authRoutes(io));
+  app.use('/api/messages', messagesRoutes);
+
+  app.get('/api/ping', (_req, res) => res.json({ message: 'Server is alive' }));
+
+  // Must come after every route: unmatched /api requests → 404, then all errors → JSON envelope.
+  app.use('/api', notFound);
+  app.use(errorHandler);
 
   return { app, httpServer, io };
 }
