@@ -2,11 +2,12 @@
 import express     from 'express';
 import pool        from '../db/connection.js';
 import verifyToken from '../middleware/verifyToken.js';
+import { AppError, ErrorCode } from '../lib/errors.js';
 
 const router = express.Router();
 
 // GET /api/messages — last 50 messages in chronological order (protected)
-router.get('/', verifyToken, async (_req, res) => {
+router.get('/', verifyToken, async (_req, res, next) => {
   try {
     // Subquery: grab the 50 most-recent rows, then re-sort oldest → newest
     // so the client can just append them in order without extra work.
@@ -32,7 +33,7 @@ router.get('/', verifyToken, async (_req, res) => {
     res.json({ messages });
   } catch (err) {
     console.error('Error fetching messages:', err.message);
-    res.status(500).json({ error: 'Failed to fetch messages.' });
+    next(new AppError(500, ErrorCode.INTERNAL_ERROR, 'Failed to fetch messages.'));
   }
 });
 

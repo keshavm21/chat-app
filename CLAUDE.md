@@ -72,6 +72,8 @@ npx vitest run -t "rejects a duplicate"    # tests whose name matches
 
 **Message flow:** history is fetched once over REST (`GET /api/messages`, last 50, returned oldest→newest); live messages arrive over the socket. The client emits `new_message`; the server inserts into Postgres and `io.emit`s `message` to **all** clients including the sender (no optimistic UI — the sender renders its own message from the broadcast). REST and socket payloads both use the same camelCase shape `{ id, userId, username, content, createdAt }`; keep them in sync if either changes.
 
+**REST errors** always use the envelope `{ error: { code, message, details? } }`. Routes and middleware never write error JSON themselves: they call `next(new AppError(status, ErrorCode.X, message))` (`server/lib/errors.ts`; use `next`, not `throw`, inside a route's `try` so its `catch` doesn't turn it into a 500). `app.js` mounts `http/notFound.ts` on `/api` after all routes (JSON 404) and `http/errorHandler.ts` last (AppError → its status; bad JSON → 400 `INVALID_JSON`; other body errors keep their 4xx; anything else → logged + generic 500, never a stack). Add new codes to `ErrorCode` only when a response needs one. The client reads messages with `getErrorMessage(err, fallback)` from `client/src/lib/errors.ts`. Socket errors are separate and unchanged (`connect_error` / `error { message }`).
+
 **Socket events:**
 - client → server: `new_message { content }`, `typing`
 - server → client: `message`, `online_count` (from `io.sockets.sockets.size`), `user_typing` / `user_stop_typing` (username string), `error { message }`

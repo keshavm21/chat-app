@@ -1,12 +1,13 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config/env.js';
+import { AppError, ErrorCode } from '../lib/errors.js';
 
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
 
   // Expect header format:  Authorization: Bearer <token>
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Access denied. No token provided.' });
+    return next(new AppError(401, ErrorCode.UNAUTHENTICATED, 'Access denied. No token provided.'));
   }
 
   const token = authHeader.split(' ')[1];
@@ -16,7 +17,7 @@ const verifyToken = (req, res, next) => {
     req.user = decoded;   // shape: { id, username, iat, exp }
     next();
   } catch {
-    return res.status(403).json({ error: 'Invalid or expired token.' });
+    return next(new AppError(403, ErrorCode.INVALID_TOKEN, 'Invalid or expired token.'));
   }
 };
 

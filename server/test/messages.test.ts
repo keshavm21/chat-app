@@ -18,7 +18,7 @@ describe('GET /api/messages', () => {
     const res = await request(server.httpServer).get('/api/messages');
 
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: 'Access denied. No token provided.' });
+    expect(res.body).toEqual({ error: { code: 'UNAUTHENTICATED', message: 'Access denied. No token provided.' } });
   });
 
   it('returns an empty list when there are no messages', async () => {

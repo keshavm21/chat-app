@@ -8,6 +8,8 @@ import authRoutes      from './routes/auth.js';
 import messagesRoutes  from './routes/messages.js';
 import socketHandler   from './socket/socketHandler.js';
 import { config }      from './config/env.js';
+import { notFound }     from './http/notFound.js';
+import { errorHandler } from './http/errorHandler.js';
 
 // Builds the Express app, HTTP server and Socket.io server without listening.
 // index.js starts it for real; tests create their own instances.
@@ -27,6 +29,10 @@ export function createApp() {
   app.use('/api/messages', messagesRoutes);
 
   app.get('/api/ping', (_req, res) => res.json({ message: 'Server is alive' }));
+
+  // Must come after every route: unmatched /api requests → 404, then all errors → JSON envelope.
+  app.use('/api', notFound);
+  app.use(errorHandler);
 
   // ── HTTP server + Socket.io ──────────────────────────────────────────────────
   // Socket.io needs a raw http.Server — it can't be attached to app directly.
