@@ -1,6 +1,7 @@
 // server/http/errorHandler.ts
 import type { ErrorRequestHandler } from 'express';
 import { AppError, ErrorCode, errorBody } from '../lib/errors.js';
+import { logger } from '../lib/logger.js';
 
 /**
  * Last middleware in the chain: turns every error into the JSON envelope.
@@ -27,6 +28,6 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
     return;
   }
 
-  console.error('Unhandled error:', err);
+  logger.error({ err }, 'Unhandled error');
   res.status(500).json(errorBody(ErrorCode.INTERNAL_ERROR, 'Internal server error.'));
 };

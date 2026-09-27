@@ -2,6 +2,7 @@
 import jwt  from 'jsonwebtoken';
 import pool from '../db/connection.js';
 import { config } from '../config/env.js';
+import { logger } from '../lib/logger.js';
 
 export default function socketHandler(io) {
 
@@ -29,7 +30,9 @@ export default function socketHandler(io) {
 
   // ── Connection handler ─────────────────────────────────────────────────────
   io.on('connection', (socket) => {
-    console.log(`🟢 ${socket.user.username} connected  (socket: ${socket.id})`);
+    // Every log line for this connection carries who it is.
+    const log = logger.child({ socketId: socket.id, userId: socket.user.id, username: socket.user.username });
+    log.info('Socket connected');
 
     // Tell everyone the new count (including the arriving user).
     io.emit('online_count', io.sockets.sockets.size);
@@ -58,7 +61,7 @@ export default function socketHandler(io) {
           createdAt: row.created_at,
         });
       } catch (err) {
-        console.error('DB error saving message:', err.message);
+        log.error({ err }, 'DB error saving message');
         // Only tell the sender — don't crash the whole server.
         socket.emit('error', { message: 'Failed to save message.' });
       }
@@ -86,7 +89,7 @@ export default function socketHandler(io) {
 
     // ── Disconnect ─────────────────────────────────────────────────────────
     socket.on('disconnect', (reason) => {
-      console.log(`🔴 ${socket.user.username} disconnected (${reason})`);
+      log.info({ reason }, 'Socket disconnected');
 
       // If the user was mid-typing, cancel the timer and clear the indicator.
       if (typingTimers.has(socket.user.id)) {
