@@ -16,16 +16,20 @@ const MESSAGE_COLUMNS = `m.id, m.seq, m.author_id AS "userId", u.username, m.con
 
 /**
  * Inserts a message with a seq from allocateSeq() and a server-generated client_id,
- * and returns it with its author's username.
+ * and returns it with its author's username. If the author is not a member of the
+ * conversation, it inserts nothing and returns undefined; the caller must then roll
+ * back, so the seq is not used up. The membership check runs in the same statement
+ * as the insert, so a concurrent removal cannot slip a message through.
  */
 export async function createMessage(
   db: Queryable,
   message: { conversationId: number; seq: number; authorId: number; content: string },
-): Promise<Message> {
+): Promise<Message | undefined> {
   const { rows } = await db.query<Message>(
     `WITH m AS (
        INSERT INTO messages (conversation_id, seq, author_id, client_id, content)
-       VALUES ($1, $2, $3, gen_random_uuid(), $4)
+       SELECT $1, $2, $3, gen_random_uuid(), $4
+       WHERE EXISTS (SELECT 1 FROM conversation_members WHERE conversation_id = $1 AND user_id = $3)
        RETURNING *
      )
      SELECT ${MESSAGE_COLUMNS} FROM m JOIN users u ON u.id = m.author_id`,

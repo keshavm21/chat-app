@@ -41,3 +41,12 @@ export async function addMember(
     [conversationId, userId, role],
   );
 }
+
+/** Moves a member's read position forward to `seq`; it never moves backwards. */
+export async function markRead(db: Queryable, conversationId: number, userId: number, seq: number): Promise<void> {
+  await db.query(
+    `UPDATE conversation_members SET last_read_seq = GREATEST(last_read_seq, $3)
+     WHERE conversation_id = $1 AND user_id = $2`,
+    [conversationId, userId, seq],
+  );
+}
