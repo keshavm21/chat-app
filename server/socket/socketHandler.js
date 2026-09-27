@@ -40,7 +40,9 @@ export default function socketHandler(io) {
     io.emit('online_count', io.sockets.sockets.size);
 
     // ── new_message ────────────────────────────────────────────────────────
-    socket.on('new_message', async ({ content } = {}) => {
+    // The payload is whatever the client sent (possibly null): never destructure it.
+    socket.on('new_message', async (payload) => {
+      const content = payload?.content;
       if (!content || typeof content !== 'string' || !content.trim()) return;
 
       try {
