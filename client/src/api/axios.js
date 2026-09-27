@@ -5,7 +5,6 @@ const api = axios.create({
 });
 
 // Automatically attach the JWT to every request.
-// This is exactly what you'll describe in interviews.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('relay_token');
   if (token) {

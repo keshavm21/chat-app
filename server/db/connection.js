@@ -4,12 +4,14 @@ import { logger } from '../lib/logger.js';
 
 const { Pool } = pg;
 
-// Railway (and most PaaS providers) inject a single DATABASE_URL.
-// Fall back to individual DB_* vars for local development.
+// DATABASE_URL is the normal setup (Neon in production, Docker locally); the
+// individual DB_* variables are an alternative.
 const pool = config.database.url
   ? new Pool({
       connectionString: config.database.url,
-      ssl: { rejectUnauthorized: false }, // required on Railway / Render / Heroku
+      // Neon requires TLS (certificate verification is a Phase 2 item). A URL with
+      // `sslmode=disable`, as used for the local Docker database, overrides this.
+      ssl: { rejectUnauthorized: false },
     })
   : new Pool({
       user:     config.database.user,

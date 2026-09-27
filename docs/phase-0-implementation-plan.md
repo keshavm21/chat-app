@@ -1,6 +1,7 @@
 # Relay — Phase 0 Implementation Plan
 
-**Status:** Approved (lean Phase 0). Revised 2026-09-27 after D6 changed: existing data is not preserved, and V2 starts with a fresh database. The production backup and production fact-gathering tasks were removed.
+**Status:** ✅ **Complete** (2026-09-27). All 11 tasks are done and verified; see [§16 Completion record](#16-completion-record) and [§17 Handoff to Phase 1](#17-handoff-to-phase-1).
+**History:** approved as the lean Phase 0. Revised 2026-09-27 after D6 changed (existing data is not preserved; V2 starts with a fresh database), which removed the production backup and fact-gathering tasks. Task 10 was later reduced in scope (see §12).
 **Scope source:** the approved lean Phase 0 plan. Background: `docs/current-state-audit.md`, `docs/v2-design.md`.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
 
@@ -26,15 +27,15 @@ Tasks are numbered in implementation order.
 
 ## 2. Prerequisites / safety checks
 
-- [ ] **Production is not touched in Phase 0,** except for the Render build/start command change in Task 1.
+- [x] **Production is not touched in Phase 0,** except for the Render build/start command change in Task 1.
   - The production database is left as it is.
   - Its data is not preserved (D6). V2 runs on a fresh database, provisioned when Phase 1 is first deployed (see §15).
-- [ ] **The developer makes every production-side change** (the Render settings). Claude Code does not connect to production.
-- [ ] Tools are installed locally: Docker, and the Node version chosen in Task 3. `psql` is optional, for inspecting local databases.
-- [ ] Tests only ever target a database whose name ends in `_test`.
-- [ ] Do not convert existing JS files to TS. Do not touch socket events, JWT handling or the schema; Task 4's initial migration reproduces the current schema without changing it. D5 and D9 are not exercised in Phase 0.
-- [ ] Never commit `.env` files.
-- [ ] One task per commit or PR. Run lint, typecheck and tests before each commit, once they exist.
+- [x] **The developer makes every production-side change** (the Render settings). Claude Code does not connect to production.
+- [x] Tools are installed locally: Docker, and the Node version chosen in Task 3. `psql` is optional, for inspecting local databases.
+- [x] Tests only ever target a database whose name ends in `_test`.
+- [x] Do not convert existing JS files to TS. Do not touch socket events, JWT handling or the schema; Task 4's initial migration reproduces the current schema without changing it. D5 and D9 are not exercised in Phase 0.
+- [x] Never commit `.env` files.
+- [x] One task per commit or PR. Run lint, typecheck and tests before each commit, once they exist.
 
 ---
 
@@ -69,9 +70,9 @@ Tasks are numbered in implementation order.
 - After the Render deploy, login and sending a message work in production.
 
 **Definition of done**
-- [ ] The server builds from `dist/` and runs in production.
-- [ ] Typecheck passes in both projects.
-- [ ] Server lint passes.
+- [x] The server builds from `dist/` and runs in production.
+- [x] Typecheck passes in both projects.
+- [x] Server lint passes.
 
 ---
 
@@ -93,7 +94,7 @@ Tasks are numbered in implementation order.
 - Manually: signup, login, logout and the protected route still work.
 
 **Definition of done**
-- [ ] Client lint is clean with no rule disabled.
+- [x] Client lint is clean with no rule disabled.
 
 ---
 
@@ -117,7 +118,7 @@ Tasks are numbered in implementation order.
 - A branch with a deliberately failing test shows a red run. Delete the branch afterwards.
 
 **Definition of done**
-- [ ] CI runs all four checks for both projects and is green on `main`.
+- [x] CI runs all four checks for both projects and is green on `main`.
 
 ---
 
@@ -150,8 +151,8 @@ Tasks are numbered in implementation order.
 - The app runs locally against `relay_dev`: signup, login and sending a message all work.
 
 **Definition of done**
-- [ ] `docker compose up` followed by `npm run migrate` works from scratch.
-- [ ] `relay_dev` and `relay_test` are created only by migrations.
+- [x] `docker compose up` followed by `npm run migrate` works from scratch.
+- [x] `relay_dev` and `relay_test` are created only by migrations.
 
 ---
 
@@ -193,9 +194,9 @@ Tasks are numbered in implementation order.
 - Pointing the tests at a database not ending in `_test` aborts before any query runs.
 
 **Definition of done**
-- [ ] The harness works for REST and sockets.
-- [ ] The tests above pass locally and in CI.
-- [ ] The app factory split causes no behavior change.
+- [x] The harness works for REST and sockets.
+- [x] The tests above pass locally and in CI.
+- [x] The app factory split causes no behavior change.
 
 ---
 
@@ -229,8 +230,8 @@ Tasks are numbered in implementation order.
 - Starting the server without `JWT_SECRET` exits with code 1 and a clear message.
 
 **Definition of done**
-- [ ] `grep process.env server/` finds hits only in `config/env.ts` (and in test setup).
-- [ ] The server fails fast on bad config.
+- [x] `grep process.env server/` finds hits only in `config/env.ts` (and in test setup).
+- [x] The server fails fast on bad config.
 
 ---
 
@@ -266,8 +267,8 @@ Tasks are numbered in implementation order.
 - Manually: signing up with a taken email shows the server's message in the UI.
 
 **Definition of done**
-- [ ] Every REST error uses the envelope.
-- [ ] The UI shows server error messages.
+- [x] Every REST error uses the envelope.
+- [x] The UI shows server error messages.
 
 ---
 
@@ -292,8 +293,8 @@ Tasks are numbered in implementation order.
 - Test output is not flooded with logs.
 
 **Definition of done**
-- [ ] No `console.*` calls remain in the server.
-- [ ] Secrets are redacted.
+- [x] No `console.*` calls remain in the server.
+- [x] Secrets are redacted.
 
 ---
 
@@ -320,8 +321,8 @@ Tasks are numbered in implementation order.
 - Manually: with a browser tab connected, `kill -TERM` the server; it exits cleanly within a few seconds. After a restart, the tab's socket reconnects.
 
 **Definition of done**
-- [ ] A pool error is logged and survived.
-- [ ] Shutdown is clean, with no errors in the log.
+- [x] A pool error is logged and survived.
+- [x] Shutdown is clean, with no errors in the log.
 
 ---
 
@@ -347,8 +348,8 @@ Tasks are numbered in implementation order.
 - A client build without `VITE_API_URL` sends REST calls to `:5001`.
 
 **Definition of done**
-- [ ] The signup race never returns 500.
-- [ ] The client uses one consistent fallback port.
+- [x] The signup race never returns 500.
+- [x] The client uses one consistent fallback port.
 
 ---
 
@@ -384,23 +385,23 @@ Tasks are numbered in implementation order.
 - The client builds after the deletions.
 
 **Definition of done**
-- [ ] The README is accurate and the setup works as written.
-- [ ] No dead template files remain.
+- [x] The README is accurate and the setup works as written.
+- [x] No dead template files remain.
 
 ---
 
 ## 14. Final Phase 0 verification checklist
 
-- [ ] A fresh clone can run `docker compose up`, `npm run migrate` and `npm test`, and everything passes.
-- [ ] `relay_dev` and `relay_test` are built from scratch by migrations.
-- [ ] CI is green on `main`: lint, typecheck, test and build for both projects.
-- [ ] A missing required env var stops startup and names the variable.
-- [ ] Every REST error uses the envelope, and the UI shows server error messages.
-- [ ] A pool error no longer kills the process, and SIGTERM exits cleanly.
-- [ ] Concurrent or duplicate signups return 409.
-- [ ] Client and server lint are clean.
-- [ ] Production still works. Only the Render build/start command changed, and the production database was not touched.
-- [ ] Nothing from the deferred list below was implemented.
+- [x] A fresh clone can run `docker compose up`, `npm run migrate` and `npm test`, and everything passes. *(Task 11: README followed from a fresh clone and a clean Docker volume; 35/35 tests.)*
+- [x] `relay_dev` and `relay_test` are built from scratch by migrations. *(`0001_initial` via `npm run migrate` and the test global setup.)*
+- [x] CI is green on `main`: lint, typecheck, test and build for both projects. *(Every Phase 0 commit, through `6f4d188`.)*
+- [x] A missing required env var stops startup and names the variable. *(Exit 1 with a fatal log naming it; values never shown.)*
+- [x] Every REST error uses the envelope, and the UI shows server error messages. *(Task 7 tests and browser check.)*
+- [x] A pool error no longer kills the process, and SIGTERM exits cleanly. *(Task 9: real `pg_terminate_backend` test; SIGTERM exit 0 in under 100 ms; clients reconnect.)*
+- [x] Concurrent or duplicate signups return 409. *(Task 10: 5-way race gives one 201 and four 409s.)*
+- [x] Client and server lint are clean.
+- [x] Production still works. Only the Render build/start command changed, and the production database was not touched. *(Read-only check on 2026-09-27: the live API serves the new build — JSON 404/401 envelopes, correct CORS, `/api/ping` 200. No queries or writes were run against the production database. See known issues in §16 for an intermittent 520.)*
+- [x] Nothing from the deferred list below was implemented.
 
 ---
 
@@ -433,3 +434,53 @@ Tasks are numbered in implementation order.
 - Staging environments and Neon preview branches.
 - Redis, multiple instances, queues and containerized deploys. Docker is for local Postgres only.
 - Coverage thresholds and load testing.
+
+---
+
+## 16. Completion record
+
+Phase 0 was completed on 2026-09-27. One task per commit, all on `main`, all with green CI.
+
+| Task | Commit | Notes and deviations from the plan |
+|---|---|---|
+| 1. TypeScript + ESLint | `ce3ae79` | Render build/start changed by the maintainer to `npm ci --include=dev && npm run build` / `npm start`. |
+| 2. Client lint fix | `e6444e7` | The context was split into three files (`AuthProvider.jsx`, `authContext.js`, `useAuth.js`), because exporting the context from the provider file fails the same lint rule. |
+| 3. CI | `f565fd9` | Node 24, `actions/checkout@v7` and `actions/setup-node@v7`. The optional deliberately red run was not performed. |
+| 4. Local Postgres + migrations | `04ed98c` | PostgreSQL 17 on host port **5433** (local Postgres installs use 5432). Local `DATABASE_URL` needs `?sslmode=disable`. SQL migrations (node-pg-migrate 9). |
+| 5. Test harness | `26309ad` | Vitest 5. The database guard has three layers: config, the pool's connection string, and an in-database check before `TRUNCATE`. |
+| 6. Environment validation | `2c6e15e` | `.env` loading moved into `config/env.ts`, because ES module imports run before the importing file's code. The server now needs the build (or `tsx`); plain `node index.js` no longer works. |
+| 7. Error handling | `b48e018` | Added `BAD_REQUEST` so body errors keep their 4xx status (e.g. 413). The login fallback message became "Login failed. Please try again." |
+| 8. Logging | `c9b0988` | Also redacts `req.headers.cookie` and Postgres `err.detail`; `dotenv` set to quiet; the config-failure line uses a default pino instance. |
+| 9. Graceful shutdown + pool error | `98c6d37` | Also redacts `err.client`: pg-pool attaches the whole client, including the database password, to pool errors. Found by the reproduction test. |
+| 10. Bug fixes | `6f4d188` | Reduced scope (see §12): audit §4.7 moved to Phase 1. |
+| 11. README/cleanup | *(this change)* | README verified end to end from a fresh clone and a clean Docker volume. |
+
+**Final state:** 35 server tests (auth, messages, sockets, errors, env, logger redaction, pool), CI green, lint/typecheck/build clean in both projects.
+
+**Known issues carried forward**
+- Audit §4.7: a username over 50 characters still returns 500. Fixed with the V2 signup validation in Phase 1.
+- Production: during the Task 11 check, the first request after about a minute of inactivity twice returned **520** from Render's proxy; immediate retries returned 200. Not reproduced with 10-second gaps, cause unknown. Watch for it once the app is in regular use.
+- `npm audit` reports 6 pre-existing advisories in transitive dependencies of `socket.io` and `express` (fixes available). Not addressed in Phase 0.
+- The client's ESLint config only lints `.js`/`.jsx`, so client `.ts` files are type-checked but not linted.
+- With pino-http's default settings, request lines for 4xx and 5xx responses are logged at `info`; the errors themselves are logged separately at `error`.
+- In development, pressing Ctrl-C twice force-kills the server (`tsx watch` behavior).
+- During Task 5, one test run failed once (all of `messages.test.ts`) and never recurred in more than 100 runs.
+
+---
+
+## 17. Handoff to Phase 1
+
+**Starting point:** the single-room app on the Phase 0 foundation above. Phase 1 builds the V2 schema from `docs/v2-design.md` §4 on a fresh database (D6).
+
+**First step:** write `docs/phase-1-implementation-plan.md` in the same format as this plan, and get it approved before any code, as was done for Phase 0.
+
+**Carried over into Phase 1**
+- Audit §4.7: server-side signup validation (length and format) with the V2 username/email rules.
+- From the deferred list: the fresh production database, running migrations on it, and rotating `JWT_SECRET` when Phase 1 is first deployed.
+- ADRs for decisions Phase 1 implements (for example D10, integer IDs), per the deferred list.
+
+**Decisions to settle while writing the Phase 1 plan**
+1. **Deploy Phase 1 to production, or keep production on Phase 0 until a later phase?** Deploying means a fresh Neon database, a rotated `JWT_SECRET`, and every existing account disappearing (D6).
+2. **Migration layout:** add `0002` that drops the Phase 0 tables and creates the V2 schema (recommended: `0001` has already run in every environment), rather than rewriting `0001`.
+3. **Keep the single-room UI working on the V2 schema** by seeding `#general`, as `docs/v2-design.md` §4 describes, until Phase 4 replaces it.
+4. **Include `seq` / `last_seq` now** (the preferred D5 model) or defer ordering columns until the D5 decision point in Phase 5.

@@ -1,6 +1,6 @@
 # Relay — V2 Design
 
-**Status:** Approved. Decisions D1–D17 were approved on 2026-09-27 (see [§10](#10-decision-record)). D6 was revised the same day: existing data is not preserved, and V2 starts with a fresh database. D5 and D9 are **flexible implementation choices**, not hard requirements. One item remains open: how session cookies will work in production while the custom domain is deferred ([§6](#6-security-model)).
+**Status:** Approved. **Phase 0 is complete (2026-09-27); Phase 1 is next** (see [§9](#9-implementation-roadmap)). Decisions D1–D17 were approved on 2026-09-27 (see [§10](#10-decision-record)). D6 was revised the same day: existing data is not preserved, and V2 starts with a fresh database. D5 and D9 are **flexible implementation choices**, not hard requirements. One item remains open: how session cookies will work in production while the custom domain is deferred ([§6](#6-security-model)).
 
 **Based on:** `docs/current-state-audit.md` (repository at commit `2e72c1d`).
 
@@ -621,8 +621,9 @@ These parts would keep working unchanged: message ordering and catch-up (owned b
 
 Each phase leaves the app working and CI green. Phases 0 and 1 can go to production as soon as they are done. Phase 2 onward reaches production once the cookie topology is chosen (§6); until then, those phases are verified locally and in CI.
 
-### Phase 0 — Foundation (on the existing single-room app)
+### Phase 0 — Foundation (on the existing single-room app) — ✅ complete
 
+- **Status:** completed 2026-09-27, as scoped by the lean plan in `docs/phase-0-implementation-plan.md` (completion record in its §16). That plan deferred Prettier, health checks and audit §4.8, limited tests to the behavior V2 relies on, and moved audit §4.7 to Phase 1.
 - **Goal:** a safe base for change.
 - **Changes:**
   - TypeScript tooling in `client` and `server` (separate `tsconfig` files, `allowJs`); ESLint and Prettier on the server.
@@ -643,7 +644,8 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
   - Migrations that drop the Phase 0 tables and create the V2 tables from §4: `users`, `conversations`, `direct_conversations`, `conversation_members` and `messages` (with `seq`). `sessions` follows in Phase 2.
   - Seed the `#general` channel. The single-room code is updated to use the new tables (§4), so the app keeps working.
   - If deployed: a fresh production database and a rotated `JWT_SECRET` (§4).
-- **Dependencies:** Phase 0; D10.
+  - Carried over from Phase 0: audit §4.7 (an over-length username returns 500), fixed by server-side signup validation with the new username and email rules.
+- **Dependencies:** Phase 0 (complete); D10. Open questions for the Phase 1 plan are listed in `docs/phase-0-implementation-plan.md` §17.
 - **Tests:** migrations apply to an empty database; constraint tests (username and email format, content length, the DM pair rule, the channel/DM shape check); the Phase 0 tests updated to the new schema.
 - **Done when:** local and CI databases are built by the new migrations, the single-room app works on the V2 schema, and every constraint is covered by a test. If the minimal D5 level is chosen later, `seq` is dropped in a later migration.
 
@@ -806,5 +808,6 @@ All decisions were approved on 2026-09-27.
 
 ## Next steps
 
-1. **Implement Phase 0** following `docs/phase-0-implementation-plan.md`.
-2. **Choose the production cookie topology (§6)** before Phase 2 is deployed to production.
+1. ~~Implement Phase 0~~ — done 2026-09-27 (`docs/phase-0-implementation-plan.md`, §16).
+2. **Write and approve `docs/phase-1-implementation-plan.md`** before any Phase 1 code, settling the decisions in the Phase 0 plan's §17 handoff.
+3. **Choose the production cookie topology (§6)** before Phase 2 is deployed to production.
