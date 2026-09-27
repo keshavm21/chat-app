@@ -58,6 +58,7 @@ describe('new_message', () => {
 
     expect(received).toEqual({
       id: expect.any(Number),
+      seq: 1,
       userId: alice.user.id,
       username: alice.username,
       content: 'hello bob',
@@ -65,13 +66,38 @@ describe('new_message', () => {
     });
     expect(echoed).toEqual(received); // the sender gets the same broadcast
 
-    const { rows } = await pool.query('SELECT user_id, username, content FROM messages');
-    expect(rows).toEqual([{ user_id: alice.user.id, username: alice.username, content: 'hello bob' }]);
+    const { rows } = await pool.query(
+      `SELECT c.name, m.seq, m.author_id, m.content
+       FROM messages m JOIN conversations c ON c.id = m.conversation_id`,
+    );
+    expect(rows).toEqual([{ name: 'general', seq: 1, author_id: alice.user.id, content: 'hello bob' }]);
 
     const history = await request(server.httpServer)
       .get('/api/messages')
       .set('Authorization', `Bearer ${bob.token}`);
     expect(history.body.messages).toEqual([received]);
+  });
+
+  it("numbers #general's messages 1, 2, … and advances its last_seq and last_message_at", async () => {
+    const alice = await signUp(server);
+    const socket = await connectSocket(server.url, alice.token);
+
+    const seqs: number[] = [];
+    for (const content of ['one', 'two', 'three']) {
+      const broadcast = nextEvent<{ seq: number }>(socket, 'message');
+      socket.emit('new_message', { content });
+      seqs.push((await broadcast).seq);
+    }
+
+    expect(seqs).toEqual([1, 2, 3]);
+    const { rows } = await pool.query(
+      `SELECT last_seq, last_message_at = (SELECT max(created_at) FROM messages) AS last_message_at_is_latest
+       FROM conversations WHERE name = 'general'`,
+    );
+    expect(rows).toEqual([{ last_seq: 3, last_message_at_is_latest: true }]);
+    // Each message gets its own server-generated client_id.
+    const clientIds = await pool.query('SELECT DISTINCT client_id FROM messages');
+    expect(clientIds.rows).toHaveLength(3);
   });
 
   // A null payload used to throw inside the handler, and the unhandled rejection
@@ -80,14 +106,14 @@ describe('new_message', () => {
     const alice = await signUp(server);
     const socket = await connectSocket(server.url, alice.token);
 
-    const next = nextEvent<{ content: string }>(socket, 'message');
+    const next = nextEvent<{ seq: number; content: string }>(socket, 'message');
     for (const payload of [null, 'text', 42, {}, { content: 42 }, { content: '' }, { content: ' \n ' }]) {
       socket.emit('new_message', payload);
     }
     socket.emit('new_message', { content: 'still here' });
 
-    // The first broadcast is the real message: nothing before it was stored.
-    expect(await next).toMatchObject({ content: 'still here' });
+    // The first broadcast is the real message, with the first seq: nothing before it was stored.
+    expect(await next).toMatchObject({ seq: 1, content: 'still here' });
     const { rows } = await pool.query('SELECT content FROM messages');
     expect(rows).toEqual([{ content: 'still here' }]);
   });

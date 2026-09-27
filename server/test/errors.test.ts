@@ -51,11 +51,53 @@ describe('REST error envelope', () => {
     expect(res.body.error.code).toBe('BAD_REQUEST');
   });
 
-  it('returns 400 VALIDATION_ERROR when signup fields are missing', async () => {
+  it('returns 400 VALIDATION_ERROR with the first problem and details of all of them when signup fields are missing', async () => {
     const res = await request(server.httpServer).post('/api/auth/signup').send({ email: 'a@example.test' });
 
     expect(res.status).toBe(400);
-    expect(res.body).toEqual({ error: { code: 'VALIDATION_ERROR', message: 'All fields are required.' } });
+    expect(res.body).toEqual({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Username is required.',
+        details: [
+          { field: 'username', message: 'Username is required.' },
+          { field: 'password', message: 'Password is required.' },
+        ],
+      },
+    });
+  });
+
+  it('returns 400 VALIDATION_ERROR when login fields are blank', async () => {
+    const res = await request(server.httpServer).post('/api/auth/login').send({ email: '  ', password: '' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Email is required.',
+        details: [
+          { field: 'email', message: 'Email is required.' },
+          { field: 'password', message: 'Password is required.' },
+        ],
+      },
+    });
+  });
+
+  // Without a JSON body, req.body is undefined; destructuring it used to throw (500).
+  it.each(['/api/auth/signup', '/api/auth/login'])('returns 400 VALIDATION_ERROR, not 500, when the body of %s is not JSON', async (path) => {
+    const res = await request(server.httpServer)
+      .post(path)
+      .set('Content-Type', 'application/x-www-form-urlencoded')
+      .send('email=a%40example.test&password=password123');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request body must be a JSON object.',
+        details: [{ field: '', message: 'Request body must be a JSON object.' }],
+      },
+    });
   });
 
   it('returns 403 INVALID_TOKEN for an invalid token', async () => {

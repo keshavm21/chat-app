@@ -66,3 +66,18 @@ export function disconnectAllSockets() {
 export function nextEvent<T>(socket: Socket, event: string): Promise<T> {
   return new Promise((resolve) => socket.once(event, resolve));
 }
+
+/** Resolves with the first `count` payloads of `event`, in arrival order. Call it before triggering them. */
+export function collectEvents<T>(socket: Socket, event: string, count: number): Promise<T[]> {
+  const received: T[] = [];
+  return new Promise((resolve) => {
+    const listener = (payload: T) => {
+      received.push(payload);
+      if (received.length === count) {
+        socket.off(event, listener);
+        resolve(received);
+      }
+    };
+    socket.on(event, listener);
+  });
+}
