@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import api from '../api/axios';
+import { getErrorMessage } from '../lib/errors';
 
 export default function Signup() {
   const [form, setForm]       = useState({ username: '', email: '', password: '' });
@@ -23,7 +24,7 @@ export default function Signup() {
       login(data.token, data.user);
       navigate('/chat');
     } catch (err) {
-      setError(err.response?.data?.message || 'Signup failed. Please try again.');
+      setError(getErrorMessage(err, 'Signup failed. Please try again.'));
     } finally {
       setLoading(false);
     }

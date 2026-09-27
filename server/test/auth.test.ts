@@ -48,7 +48,7 @@ describe('POST /api/auth/signup', () => {
       .send({ ...alice, username: 'someone_else' });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: 'Email or username is already taken.' });
+    expect(res.body).toEqual({ error: { code: 'CONFLICT', message: 'Email or username is already taken.' } });
     expect(await userCount()).toBe(1);
   });
 
@@ -60,7 +60,7 @@ describe('POST /api/auth/signup', () => {
       .send({ ...alice, email: 'other@example.test' });
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: 'Email or username is already taken.' });
+    expect(res.body).toEqual({ error: { code: 'CONFLICT', message: 'Email or username is already taken.' } });
     expect(await userCount()).toBe(1);
   });
 });
@@ -93,7 +93,7 @@ describe('POST /api/auth/login', () => {
 
     expect(unknownEmail.status).toBe(401);
     expect(wrongPassword.status).toBe(401);
-    expect(unknownEmail.body).toEqual({ error: 'Invalid email or password.' });
+    expect(unknownEmail.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' } });
     expect(wrongPassword.body).toEqual(unknownEmail.body);
   });
 });

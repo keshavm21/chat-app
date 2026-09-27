@@ -3,16 +3,17 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool from '../db/connection.js';
 import { config } from '../config/env.js';
+import { AppError, ErrorCode } from '../lib/errors.js';
 
 const router = express.Router();
 const SALT_ROUNDS = 10;
 
 // ─── POST /api/auth/signup ────────────────────────────────────────────────────
-router.post('/signup', async (req, res) => {
+router.post('/signup', async (req, res, next) => {
   const { username, email, password } = req.body;
 
   if (!username || !email || !password) {
-    return res.status(400).json({ error: 'All fields are required.' });
+    return next(new AppError(400, ErrorCode.VALIDATION_ERROR, 'All fields are required.'));
   }
 
   try {
@@ -23,7 +24,7 @@ router.post('/signup', async (req, res) => {
     );
 
     if (existing.rows.length > 0) {
-      return res.status(409).json({ error: 'Email or username is already taken.' });
+      return next(new AppError(409, ErrorCode.CONFLICT, 'Email or username is already taken.'));
     }
 
     const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
@@ -49,16 +50,16 @@ router.post('/signup', async (req, res) => {
     });
   } catch (err) {
     console.error('Signup error:', err.message);
-    res.status(500).json({ error: 'Server error during signup.' });
+    next(new AppError(500, ErrorCode.INTERNAL_ERROR, 'Server error during signup.'));
   }
 });
 
 // ─── POST /api/auth/login ─────────────────────────────────────────────────────
-router.post('/login', async (req, res) => {
+router.post('/login', async (req, res, next) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required.' });
+    return next(new AppError(400, ErrorCode.VALIDATION_ERROR, 'Email and password are required.'));
   }
 
   try {
@@ -70,14 +71,14 @@ router.post('/login', async (req, res) => {
     // ⚠️  Intentionally same error for "not found" and "wrong password"
     //     — prevents attackers from discovering which emails are registered
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
+      return next(new AppError(401, ErrorCode.INVALID_CREDENTIALS, 'Invalid email or password.'));
     }
 
     const user = result.rows[0];
     const isMatch = await bcrypt.compare(password, user.password);
 
     if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid email or password.' });
+      return next(new AppError(401, ErrorCode.INVALID_CREDENTIALS, 'Invalid email or password.'));
     }
 
     const token = jwt.sign(
@@ -92,7 +93,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err.message);
-    res.status(500).json({ error: 'Server error during login.' });
+    next(new AppError(500, ErrorCode.INTERNAL_ERROR, 'Server error during login.'));
   }
 });
 
