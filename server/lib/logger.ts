@@ -14,6 +14,7 @@ export const loggerOptions = {
       '*.password',
       '*.*.password',              // e.g. { req: { body: { password } } }
       'err.detail',                // Postgres DETAIL can contain row values (e.g. a password hash)
+      'err.client',                // pg-pool attaches the whole client, incl. the DB password, to pool errors
     ],
   },
 } satisfies LoggerOptions;
