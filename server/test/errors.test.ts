@@ -3,6 +3,7 @@ import express from 'express';
 import request from 'supertest';
 import pool from '../db/connection.js';
 import { errorHandler } from '../http/errorHandler.js';
+import { logger } from '../lib/logger.js';
 import { startServer, type TestServer } from './helpers.js';
 
 let server: TestServer;
@@ -72,7 +73,7 @@ describe('REST error envelope', () => {
         .post('/api/auth/signup')
         .send({ username: 'dave', email: 'dave@example.test', password: 'password123' })
     ).body;
-    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logged = vi.spyOn(logger, 'error');
     vi.spyOn(pool, 'query').mockRejectedValueOnce(new Error('db exploded at 10.0.0.5'));
 
     const res = await request(server.httpServer).get('/api/messages').set('Authorization', `Bearer ${token}`);
@@ -80,12 +81,17 @@ describe('REST error envelope', () => {
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch messages.' } });
     expect(res.text).not.toContain('db exploded');
+    // The real cause goes to the server log instead.
+    expect(logged).toHaveBeenCalledWith(
+      { err: expect.objectContaining({ message: 'db exploded at 10.0.0.5' }) },
+      'Error fetching messages',
+    );
   });
 });
 
 describe('errorHandler', () => {
   it('turns an unexpected error into a generic 500 with no stack or message, and logs it', async () => {
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logged = vi.spyOn(logger, 'error');
     const app = express();
     app.get('/boom', () => {
       throw new Error('secret internal detail');

@@ -3,6 +3,7 @@ import express     from 'express';
 import pool        from '../db/connection.js';
 import verifyToken from '../middleware/verifyToken.js';
 import { AppError, ErrorCode } from '../lib/errors.js';
+import { logger } from '../lib/logger.js';
 
 const router = express.Router();
 
@@ -32,7 +33,7 @@ router.get('/', verifyToken, async (_req, res, next) => {
 
     res.json({ messages });
   } catch (err) {
-    console.error('Error fetching messages:', err.message);
+    logger.error({ err }, 'Error fetching messages');
     next(new AppError(500, ErrorCode.INTERNAL_ERROR, 'Failed to fetch messages.'));
   }
 });

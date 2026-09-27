@@ -13,6 +13,7 @@ export default defineConfig({
       // the DATABASE_URL in the root .env (relay_dev).
       DATABASE_URL: resolveTestDatabaseUrl(),
       JWT_SECRET: 'relay-test-secret',
+      LOG_LEVEL: 'silent', // keep test output free of request/app logs
     },
   },
 });

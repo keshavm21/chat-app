@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import pool from '../db/connection.js';
 import { config } from '../config/env.js';
 import { AppError, ErrorCode } from '../lib/errors.js';
+import { logger } from '../lib/logger.js';
 
 const router = express.Router();
 const SALT_ROUNDS = 10;
@@ -49,7 +50,7 @@ router.post('/signup', async (req, res, next) => {
       user: { id: newUser.id, username: newUser.username, email: newUser.email },
     });
   } catch (err) {
-    console.error('Signup error:', err.message);
+    logger.error({ err }, 'Signup error');
     next(new AppError(500, ErrorCode.INTERNAL_ERROR, 'Server error during signup.'));
   }
 });
@@ -92,7 +93,7 @@ router.post('/login', async (req, res, next) => {
       user: { id: user.id, username: user.username, email: user.email },
     });
   } catch (err) {
-    console.error('Login error:', err.message);
+    logger.error({ err }, 'Login error');
     next(new AppError(500, ErrorCode.INTERNAL_ERROR, 'Server error during login.'));
   }
 });

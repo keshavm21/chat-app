@@ -1,6 +1,7 @@
 // server/config/env.ts
 // The only place the server reads process.env. Everything else imports `config`.
 import dotenv from 'dotenv';
+import pino from 'pino';
 import { fileURLToPath } from 'url';
 import { basename, dirname, resolve } from 'path';
 import { z } from 'zod';
@@ -11,7 +12,8 @@ import { z } from 'zod';
 const here = dirname(fileURLToPath(import.meta.url));
 // The compiled build runs from server/dist/config/, one level deeper than the source.
 const rootEnv = basename(dirname(here)) === 'dist' ? '../../../.env' : '../../.env';
-dotenv.config({ path: resolve(here, rootEnv) });
+// quiet: dotenv would otherwise print its own non-JSON banner into the log stream.
+dotenv.config({ path: resolve(here, rootEnv), quiet: true });
 
 // ── Schema ─────────────────────────────────────────────────────────────────────
 // An empty value (e.g. `JWT_SECRET=` in .env) is treated the same as an unset one.
@@ -49,8 +51,8 @@ const schema = z
   });
 
 export class ConfigError extends Error {
-  constructor(readonly variables: string[], details: string[]) {
-    super(`Invalid environment configuration (values are not shown):\n${details.map((d) => `  - ${d}`).join('\n')}`);
+  constructor(readonly variables: string[], readonly issues: string[]) {
+    super(`Invalid environment configuration (values are not shown):\n${issues.map((d) => `  - ${d}`).join('\n')}`);
     this.name = 'ConfigError';
   }
 }
@@ -92,8 +94,13 @@ function loadConfig(): Config {
     return parseEnv(process.env);
   } catch (err) {
     if (!(err instanceof ConfigError)) throw err;
-    // Fail fast, before the server connects to anything or listens.
-    console.error(err.message);
+    // Fail fast, before the server connects to anything or listens. The app's logger
+    // (lib/logger.ts) takes its level from this config, so it cannot exist yet: use a
+    // default pino instance. pino flushes on process exit, so the line is not lost.
+    pino().fatal(
+      { variables: err.variables, issues: err.issues },
+      'Invalid environment configuration (values are not shown)',
+    );
     process.exit(1);
   }
 }
