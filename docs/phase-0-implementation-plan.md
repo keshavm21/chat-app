@@ -327,7 +327,9 @@ Tasks are numbered in implementation order.
 
 ## 12. Task 10 — Approved bug fixes
 
-**Objective:** fix audit §4 items 6 (signup race returns 500) and 7 (long username returns 500), and the client API port mismatch.
+**Objective:** fix audit §4 item 6 (signup race returns 500) and the client API port mismatch.
+
+**Scope (reduced, decided 2026-09-27):** audit §4 item 7 (over-length username returns 500) moved to Phase 1. Phase 1 replaces the username and email rules, so length and format validation is written once there instead of twice. See the deferred list (§15).
 
 **Files likely to change**
 - `server/routes/auth.js`
@@ -336,21 +338,16 @@ Tasks are numbered in implementation order.
 
 **Implementation steps**
 1. **Fix 6:** keep the existing pre-check, and also catch the Postgres unique violation (`23505`) on insert and return 409 via `AppError`.
-2. **Fix 7:** validate the signup body server-side with zod:
-   - required fields;
-   - `username` and `email` maximum lengths matching the column sizes in the Task 4 initial migration (`VARCHAR(50)` and `VARCHAR(100)`).
-
-   Invalid bodies return 400. Do **not** add V2 username format rules or password rules yet.
-3. **Port:** change the fallback in `client/src/api/axios.js` to `:5001`, matching `socket.js` and the server.
+2. **Port:** change the fallback in `client/src/api/axios.js` to `:5001`, matching `socket.js` and the server.
 
 **Tests/verification**
-- Two concurrent signups with the same email produce exactly one success and one 409, never a 500.
-- A 51-character username returns 400.
-- An email over the column limit returns 400.
+- Concurrent signups with the same email produce exactly one success and 409s, never a 500.
+- A duplicate that the pre-check misses (the lost race) returns 409 for both the email and the username constraint.
 - Existing signup tests still pass.
+- A client build without `VITE_API_URL` sends REST calls to `:5001`.
 
 **Definition of done**
-- [ ] Neither case returns 500.
+- [ ] The signup race never returns 500.
 - [ ] The client uses one consistent fallback port.
 
 ---
@@ -400,7 +397,7 @@ Tasks are numbered in implementation order.
 - [ ] A missing required env var stops startup and names the variable.
 - [ ] Every REST error uses the envelope, and the UI shows server error messages.
 - [ ] A pool error no longer kills the process, and SIGTERM exits cleanly.
-- [ ] Concurrent or duplicate signups return 409, and an over-length username returns 400.
+- [ ] Concurrent or duplicate signups return 409.
 - [ ] Client and server lint are clean.
 - [ ] Production still works. Only the Render build/start command changed, and the production database was not touched.
 - [ ] Nothing from the deferred list below was implemented.
@@ -416,6 +413,7 @@ Tasks are numbered in implementation order.
 | Fresh production database: create it empty, run migrations, rotate `JWT_SECRET` (`docs/v2-design.md` §4) | When Phase 1 is first deployed |
 | `packages/shared` and npm workspaces | When the first type is genuinely shared (likely Phase 3–4) |
 | Audit §4 items 3–5 (load race, reconnect gap, lost sends) | Phases 4–5 |
+| Audit §4 item 7 (over-length username returns 500): server-side signup length/format validation | Phase 1, with the V2 signup rules |
 | Audit §4 item 8 (toast IDs) | Phase 4 `Chat.jsx` rewrite |
 | Client Vitest setup | Phase 4 |
 | Playwright | Phase 5 (offline/reconnect test) |

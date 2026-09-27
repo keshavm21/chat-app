@@ -1,15 +1,20 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool from '../db/connection.js';
 import { config } from '../config/env.js';
+import { logger } from '../lib/logger.js';
 import { signUp, startServer, type TestServer } from './helpers.js';
 
 let server: TestServer;
 
 beforeAll(async () => {
   server = await startServer();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 afterAll(async () => {
@@ -61,6 +66,39 @@ describe('POST /api/auth/signup', () => {
 
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: { code: 'CONFLICT', message: 'Email or username is already taken.' } });
+    expect(await userCount()).toBe(1);
+  });
+
+  // Audit §4.6: two signups can both pass the pre-check before either inserts; the
+  // database's unique constraint then rejects the second (Postgres error 23505).
+  it.each([
+    ['email', { ...alice, username: 'someone_else' }],
+    ['username', { ...alice, email: 'other@example.test' }],
+  ])('returns 409, not 500, when the unique constraint catches a duplicate %s the pre-check missed', async (_field, duplicate) => {
+    await request(server.httpServer).post('/api/auth/signup').send(alice).expect(201);
+    const logged = vi.spyOn(logger, 'error');
+    // Simulate losing the race: the pre-check SELECT sees no existing user.
+    vi.spyOn(pool, 'query').mockResolvedValueOnce({ rows: [] } as never);
+
+    const res = await request(server.httpServer).post('/api/auth/signup').send(duplicate);
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: { code: 'CONFLICT', message: 'Email or username is already taken.' } });
+    expect(await userCount()).toBe(1);
+    expect(logged).not.toHaveBeenCalled(); // an expected conflict, not a server error
+  });
+
+  it('handles concurrent signups with the same email: exactly one 201, the rest 409, never 500', async () => {
+    const results = await Promise.all(
+      [1, 2, 3, 4, 5].map((n) =>
+        request(server.httpServer)
+          .post('/api/auth/signup')
+          .send({ username: `racer${n}`, email: 'race@example.test', password: 'password123' }),
+      ),
+    );
+
+    const statuses = results.map((res) => res.status).sort();
+    expect(statuses).toEqual([201, 409, 409, 409, 409]);
     expect(await userCount()).toBe(1);
   });
 });
