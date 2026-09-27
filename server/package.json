@@ -9,7 +9,10 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "migrate": "node-pg-migrate up --envPath ../.env",
+    "migrate:down": "node-pg-migrate down --envPath ../.env",
+    "migrate:create": "node-pg-migrate create --migration-file-language sql --migration-filename-format index"
   },
   "keywords": [],
   "author": "",
@@ -34,6 +37,7 @@
     "@types/pg": "^8.23.1",
     "eslint": "^10.11.0",
     "globals": "^17.12.0",
+    "node-pg-migrate": "^9.0.0",
     "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.1"
