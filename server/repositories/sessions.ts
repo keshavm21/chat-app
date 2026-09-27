@@ -50,6 +50,39 @@ export async function findSessionUser(db: Queryable, tokenHash: Buffer): Promise
   return rows[0];
 }
 
+/**
+ * Of these sessions, the ones still valid, by the same rules as findSessionUser. Each
+ * counts as used: its last_seen_at moves forward the same way, at most once an hour.
+ */
+export async function findValidSessions(db: Queryable, tokenHashes: Buffer[]): Promise<Buffer[]> {
+  const { rows } = await db.query<{ token_hash: Buffer }>(
+    `WITH valid AS (
+       SELECT token_hash FROM sessions
+       WHERE token_hash = ANY ($1::bytea[])
+         AND expires_at > now()
+         AND last_seen_at > now() - $2::double precision * interval '1 millisecond'
+     ), touched AS (
+       UPDATE sessions SET last_seen_at = now()
+       WHERE token_hash IN (SELECT token_hash FROM valid)
+         AND last_seen_at <= now() - $3::double precision * interval '1 millisecond'
+     )
+     SELECT token_hash FROM valid`,
+    [tokenHashes, SESSION_IDLE_TIMEOUT_MS, SESSION_TOUCH_INTERVAL_MS],
+  );
+  return rows.map((row) => row.token_hash);
+}
+
+/** Deletes every expired or idle session and returns how many there were. */
+export async function deleteEndedSessions(db: Queryable): Promise<number> {
+  const { rowCount } = await db.query(
+    `DELETE FROM sessions
+     WHERE expires_at <= now()
+        OR last_seen_at <= now() - $1::double precision * interval '1 millisecond'`,
+    [SESSION_IDLE_TIMEOUT_MS],
+  );
+  return rowCount ?? 0;
+}
+
 /** Deletes a session. Deleting one that does not exist is not an error. */
 export async function deleteSession(db: Queryable, tokenHash: Buffer): Promise<void> {
   await db.query('DELETE FROM sessions WHERE token_hash = $1', [tokenHash]);

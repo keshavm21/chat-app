@@ -3,11 +3,12 @@ import request from 'supertest';
 import { parseSetCookie } from 'cookie';
 import { io as ioClient, type Socket } from 'socket.io-client';
 import { createApp } from '../app.js';
-import { sessionCookie } from '../lib/sessions.js';
+import pool from '../db/connection.js';
+import { hashSessionToken, sessionCookie } from '../lib/sessions.js';
 
-/** Starts the real app (Express + Socket.io) on a random free port. */
+/** Starts the real app (Express + Socket.io + the session sweep) on a random free port. */
 export async function startServer() {
-  const { app, httpServer, io } = createApp();
+  const { app, httpServer, io, sessionSweep } = createApp();
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const { port } = httpServer.address() as AddressInfo;
 
@@ -16,8 +17,11 @@ export async function startServer() {
     httpServer,
     io,
     url: `http://localhost:${port}`,
-    // io.close() disconnects every socket and closes the HTTP server.
-    close: () => new Promise<void>((resolve) => io.close(() => resolve())),
+    // Stops the session sweep; then io.close() disconnects every socket and closes the HTTP server.
+    close: async () => {
+      await sessionSweep.stop();
+      await new Promise<void>((resolve) => io.close(() => resolve()));
+    },
   };
 }
 
@@ -32,6 +36,19 @@ export function sessionCookieOf(res: request.Response): string {
   const cookie = setCookies.map((header) => parseSetCookie(header)).find((c) => c.name === sessionCookie.name);
   if (!cookie?.value) throw new Error('The response sets no session cookie');
   return `${cookie.name}=${cookie.value}`;
+}
+
+/** The SHA-256 of a session cookie's token: its sessions.token_hash. */
+export function sessionHashOf(cookie: string): Buffer {
+  return hashSessionToken(cookie.slice(cookie.indexOf('=') + 1));
+}
+
+/** Puts a session's `column` this far (a Postgres interval, e.g. '8 days') in the past. */
+export async function setSessionAgo(cookie: string, column: 'expires_at' | 'last_seen_at', interval: string) {
+  await pool.query(`UPDATE sessions SET ${column} = now() - $2::interval WHERE token_hash = $1`, [
+    sessionHashOf(cookie),
+    interval,
+  ]);
 }
 
 let userCount = 0;

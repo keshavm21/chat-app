@@ -8,13 +8,14 @@ import { Server }       from 'socket.io';
 import authRoutes      from './routes/auth.js';
 import messagesRoutes  from './routes/messages.js';
 import socketHandler   from './socket/socketHandler.js';
+import { startSessionSweep } from './socket/sessionSweep.js';
 import { config }      from './config/env.js';
 import { notFound }     from './http/notFound.js';
 import { errorHandler } from './http/errorHandler.js';
 import { logger }       from './lib/logger.js';
 
-// Builds the Express app, HTTP server and Socket.io server without listening.
-// index.js starts it for real; tests create their own instances.
+// Builds the Express app, HTTP server and Socket.io server without listening, and
+// starts the session sweep. index.js starts it for real; tests create their own instances.
 export function createApp() {
   const app = express();
 
@@ -53,5 +54,10 @@ export function createApp() {
   app.use('/api', notFound);
   app.use(errorHandler);
 
-  return { app, httpServer, io };
+  // ── Session sweep ────────────────────────────────────────────────────────────
+  // Every 5 minutes, disconnects the sockets of ended sessions and deletes their rows.
+  // Whoever closes the server stops it first: index.js's shutdown, the tests' close().
+  const sessionSweep = startSessionSweep(io);
+
+  return { app, httpServer, io, sessionSweep };
 }

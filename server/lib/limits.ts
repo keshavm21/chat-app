@@ -28,3 +28,6 @@ export const SESSION_IDLE_TIMEOUT_MS = 7 * DAY_MS;
 
 /** last_seen_at is moved forward at most this often, so most requests write nothing. */
 export const SESSION_TOUCH_INTERVAL_MS = HOUR_MS;
+
+/** How often the session sweep disconnects sockets of ended sessions and deletes their rows. */
+export const SESSION_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
