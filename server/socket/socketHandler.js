@@ -1,8 +1,14 @@
 // server/socket/socketHandler.js
 import jwt  from 'jsonwebtoken';
-import pool from '../db/connection.js';
 import { config } from '../config/env.js';
+import { withTransaction } from '../db/transaction.js';
+import { MESSAGE_MAX_LENGTH } from '../lib/limits.js';
 import { logger } from '../lib/logger.js';
+import { allocateSeq, findGeneralId, markRead } from '../repositories/conversations.js';
+import { createMessage } from '../repositories/messages.js';
+
+// Thrown inside the send transaction to roll it back when the sender is not a member.
+class NotAMemberError extends Error {}
 
 export default function socketHandler(io) {
 
@@ -41,28 +47,39 @@ export default function socketHandler(io) {
     // The payload is whatever the client sent (possibly null): never destructure it.
     socket.on('new_message', async (payload) => {
       const content = payload?.content;
-      if (!content || typeof content !== 'string' || !content.trim()) return;
+      if (typeof content !== 'string') return;
+      const text = content.trim();
+      if (!text) return; // empty messages are ignored
+      // Counted in characters (code points), as the database's char_length() does.
+      if ([...text].length > MESSAGE_MAX_LENGTH) {
+        socket.emit('error', { message: `Message is too long (maximum ${MESSAGE_MAX_LENGTH} characters).` });
+        return;
+      }
 
       try {
-        const { rows } = await pool.query(
-          `INSERT INTO messages (user_id, username, content)
-           VALUES ($1, $2, $3)
-           RETURNING id, user_id, username, content, created_at`,
-          [socket.user.id, socket.user.username, content.trim()]
-        );
-
-        const row = rows[0];
-
-        // Broadcast to ALL connected clients (including the sender so their
-        // message appears in the same pipeline as everyone else's).
-        io.emit('message', {
-          id:        row.id,
-          userId:    row.user_id,
-          username:  row.username,
-          content:   row.content,
-          createdAt: row.created_at,
+        // Everything goes to #general for now. allocateSeq() locks #general's row
+        // until COMMIT, so concurrent sends get consecutive seqs in commit order.
+        const message = await withTransaction(async (client) => {
+          const conversationId = await findGeneralId(client);
+          const seq = await allocateSeq(client, conversationId);
+          const created = await createMessage(client, { conversationId, seq, authorId: socket.user.id, content: text });
+          // Not a member (e.g. the token of a deleted user): roll back, which also
+          // gives the seq back, so it leaves no gap.
+          if (!created) throw new NotAMemberError();
+          // The sender has read everything up to their own message.
+          await markRead(client, conversationId, socket.user.id, seq);
+          return created;
         });
+
+        // Only after COMMIT: broadcast to ALL connected clients (including the sender
+        // so their message appears in the same pipeline as everyone else's).
+        io.emit('message', message);
       } catch (err) {
+        if (err instanceof NotAMemberError) {
+          log.warn('Message rejected: the sender is not a member of #general');
+          socket.emit('error', { message: 'You are not a member of this conversation.' });
+          return;
+        }
         log.error({ err }, 'DB error saving message');
         // Only tell the sender — don't crash the whole server.
         socket.emit('error', { message: 'Failed to save message.' });

@@ -4,32 +4,17 @@ import pool        from '../db/connection.js';
 import verifyToken from '../middleware/verifyToken.js';
 import { AppError, ErrorCode } from '../lib/errors.js';
 import { logger } from '../lib/logger.js';
+import { findGeneralId } from '../repositories/conversations.js';
+import { listLatestMessages } from '../repositories/messages.js';
 
 const router = express.Router();
 
-// GET /api/messages — last 50 messages in chronological order (protected)
+// GET /api/messages — the last 50 messages of #general, oldest first by seq (protected)
 router.get('/', verifyToken, async (_req, res, next) => {
   try {
-    // Subquery: grab the 50 most-recent rows, then re-sort oldest → newest
-    // so the client can just append them in order without extra work.
-    const { rows } = await pool.query(`
-      SELECT id, user_id, username, content, created_at
-      FROM (
-        SELECT id, user_id, username, content, created_at
-        FROM   messages
-        ORDER  BY created_at DESC
-        LIMIT  50
-      ) sub
-      ORDER BY created_at ASC
-    `);
-
-    const messages = rows.map(row => ({
-      id:        row.id,
-      userId:    row.user_id,   // camelCase to match what the socket broadcasts
-      username:  row.username,
-      content:   row.content,
-      createdAt: row.created_at,
-    }));
+    // Oldest → newest, so the client can just append them in order without extra work.
+    // Same shape as the socket's `message` event.
+    const messages = await listLatestMessages(pool, await findGeneralId(pool), 50);
 
     res.json({ messages });
   } catch (err) {

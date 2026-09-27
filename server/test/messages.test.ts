@@ -32,15 +32,19 @@ describe('GET /api/messages', () => {
     expect(res.body).toEqual({ messages: [] });
   });
 
-  it('returns messages oldest first, in the camelCase REST shape', async () => {
+  it("returns #general's messages oldest first by seq, in the camelCase REST shape", async () => {
     const user = await signUp(server);
-    // Inserted out of order, with explicit timestamps, so ordering is deterministic.
+    const { rows } = await pool.query(
+      `INSERT INTO conversations (type, visibility, name) VALUES ('channel', 'public', 'random') RETURNING id`,
+    );
+    // Inserted out of seq order; the message in another channel is not part of the history.
     await pool.query(
-      `INSERT INTO messages (user_id, username, content, created_at) VALUES
-         ($1, $2, 'second', '2026-01-01 10:00:02'),
-         ($1, $2, 'first',  '2026-01-01 10:00:01'),
-         ($1, $2, 'third',  '2026-01-01 10:00:03')`,
-      [user.user.id, user.username],
+      `INSERT INTO messages (conversation_id, seq, author_id, client_id, content) VALUES
+         ((SELECT id FROM conversations WHERE name = 'general'), 2, $1, gen_random_uuid(), 'second'),
+         ((SELECT id FROM conversations WHERE name = 'general'), 1, $1, gen_random_uuid(), 'first'),
+         ((SELECT id FROM conversations WHERE name = 'general'), 3, $1, gen_random_uuid(), 'third'),
+         ($2, 1, $1, gen_random_uuid(), 'elsewhere')`,
+      [user.user.id, rows[0].id],
     );
 
     const res = await request(server.httpServer)
@@ -49,9 +53,11 @@ describe('GET /api/messages', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.messages.map((m: { content: string }) => m.content)).toEqual(['first', 'second', 'third']);
+    expect(res.body.messages.map((m: { seq: number }) => m.seq)).toEqual([1, 2, 3]);
     for (const message of res.body.messages) {
       expect(message).toEqual({
         id: expect.any(Number),
+        seq: expect.any(Number),
         userId: user.user.id,
         username: user.username,
         content: expect.any(String),

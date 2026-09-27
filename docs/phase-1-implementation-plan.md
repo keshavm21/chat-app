@@ -1,6 +1,7 @@
 # Relay — Phase 1 Implementation Plan
 
-**Status:** ✅ **Approved** (2026-09-27). The maintainer's decisions on the open questions are recorded in [§14](#14-decisions-confirmed-at-approval). Work starts with Milestone 0.
+**Status:** ✅ **Complete** (2026-09-27) on the `phase-1` branch. Milestones M0–M4 are done and verified; see [§15 Completion record](#15-completion-record) and [§16 Handoff](#16-handoff-to-the-cutover-and-phase-2). Production stays on Phase 0 until the cutover ([§13](#13-production-cutover-runbook-prepared-not-executed-in-phase-1)), which the maintainer schedules.
+**History:** approved 2026-09-27; the maintainer's decisions on the open questions are recorded in [§14](#14-decisions-confirmed-at-approval).
 **Scope source:** `docs/v2-design.md` (§4 data model, §5 message delivery, §9 Phase 1) and the handoff in `docs/phase-0-implementation-plan.md` §17, shaped by the four decisions in §2.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
 
@@ -46,13 +47,13 @@ Phase 1 does **not** add conversation endpoints or UI, sessions, rooms, the REST
 
 ## 4. Workflow and safety rules
 
-- [ ] **All Phase 1 commits go to the `phase-1` branch, never to `main`.** A draft pull request `phase-1 → main` (marked "do not merge until the production cutover") makes CI run on every push to the branch.
-- [ ] Commit directly to `phase-1`; the draft PR is the only pull request and exists to run CI (no per-milestone PRs). One task per commit, lint/typecheck/tests before each commit. A milestone is done when CI is green on the branch and its verification and definition of done are met; the next milestone starts only after the maintainer approves.
-- [ ] Phase 0 fixes still go to `main` (production), and `main` is merged into `phase-1` afterwards so the branch doesn't drift.
-- [ ] Never connect to or modify the production database. `0002` runs only against `relay_dev`, `relay_test`, CI's database and scratch databases.
-- [ ] Tests only run against a local `*_test` database (the Phase 0 guard stays in place).
-- [ ] Vercel builds preview deployments of branch pushes, and those previews call the **production** API. Phase 1 client changes (Milestone 1's signup form) are compatible with the Phase 0 API, so this is harmless, so previews stay enabled (confirmed, §14).
-- [ ] Limits used by both validation and the database (username pattern, email length, message length) live in one module (`server/lib/limits.ts`); the migration repeats them in SQL, and tests check that both agree.
+- [x] **All Phase 1 commits go to the `phase-1` branch, never to `main`.** A draft pull request `phase-1 → main` (marked "do not merge until the production cutover") makes CI run on every push to the branch.
+- [x] Commit directly to `phase-1`; the draft PR is the only pull request and exists to run CI (no per-milestone PRs). One task per commit, lint/typecheck/tests before each commit. A milestone is done when CI is green on the branch and its verification and definition of done are met; the next milestone starts only after the maintainer approves.
+- [x] Phase 0 fixes still go to `main` (production), and `main` is merged into `phase-1` afterwards so the branch doesn't drift.
+- [x] Never connect to or modify the production database. `0002` runs only against `relay_dev`, `relay_test`, CI's database and scratch databases.
+- [x] Tests only run against a local `*_test` database (the Phase 0 guard stays in place).
+- [x] Vercel builds preview deployments of branch pushes, and those previews call the **production** API. Phase 1 client changes (Milestone 1's signup form) are compatible with the Phase 0 API, so this is harmless, so previews stay enabled (confirmed, §14).
+- [x] Limits used by both validation and the database (username pattern, email length, message length) live in one module (`server/lib/limits.ts`); the migration repeats them in SQL, and tests check that both agree.
 
 ---
 
@@ -89,8 +90,8 @@ Why this order: M1 adds the application-level rules first, on a schema that alre
 - A push to `phase-1` triggers CI on the PR and **no** Render deploy.
 
 **Definition of done**
-- [ ] `phase-1` exists with a draft PR and green CI.
-- [ ] Render is confirmed to deploy only `main`.
+- [x] `phase-1` exists with a draft PR and green CI.
+- [x] Render is confirmed to deploy only `main`.
 
 ---
 
@@ -119,8 +120,8 @@ Why this order: M1 adds the application-level rules first, on a schema that alre
 - Existing auth, error and race tests still pass (updated where the missing-fields message changes).
 
 **Definition of done**
-- [ ] No signup or login input can produce a 500 from invalid identity data.
-- [ ] The signup form's constraints match the server rules.
+- [x] No signup or login input can produce a 500 from invalid identity data.
+- [x] The signup form's constraints match the server rules.
 
 ---
 
@@ -174,9 +175,9 @@ Why this order: M1 adds the application-level rules first, on a schema that alre
 - Manually: signup, login, history and sending work in the browser; the message payloads include `seq`.
 
 **Definition of done**
-- [ ] Local and CI databases are built by `0001` + `0002`.
-- [ ] The single-room app works on the V2 schema through `#general`.
-- [ ] Every constraint in `0002` is covered by a test.
+- [x] Local and CI databases are built by `0001` + `0002`.
+- [x] The single-room app works on the V2 schema through `#general`.
+- [x] Every constraint in `0002` is covered by a test.
 
 ---
 
@@ -201,8 +202,8 @@ Why this order: M1 adds the application-level rules first, on a schema that alre
 - A 4001-character message is rejected with the error event and nothing is stored.
 
 **Definition of done**
-- [ ] Concurrent sends are gapless and ordered by `seq`, proven by tests.
-- [ ] A failed send never consumes a `seq`.
+- [x] Concurrent sends are gapless and ordered by `seq`, proven by tests.
+- [x] A failed send never consumes a `seq`.
 
 ---
 
@@ -221,22 +222,22 @@ Why this order: M1 adds the application-level rules first, on a schema that alre
 4. **Completion record** in this plan, and the cutover runbook (§13) reviewed and ready.
 
 **Definition of done**
-- [ ] Every item in §11 is checked.
-- [ ] The maintainer decides when to run the production cutover (§13).
+- [x] Every item in §11 is checked.
+- [ ] The maintainer decides when to run the production cutover (§13). *(Open: handed over in §16.)*
 
 ---
 
 ## 11. Final Phase 1 verification checklist
 
-- [ ] `phase-1` CI is green: lint, typecheck, tests and build for both projects.
-- [ ] A fresh clone and clean Docker volume build `relay_dev` and `relay_test` from `0001` + `0002`; `#general` is seeded.
-- [ ] `0002` rolls back to the Phase 0 schema and re-applies cleanly.
-- [ ] Signup, login, history and sending work in the browser on the V2 schema.
-- [ ] Invalid signup input returns 400, never 500 (audit §4.7).
-- [ ] Every constraint in `0002` has a test; concurrent sends are gapless; failed sends consume no `seq`.
-- [ ] Message payloads carry `seq`; the REST and socket shapes are otherwise unchanged.
-- [ ] Production is still on Phase 0: nothing from `phase-1` merged to `main`, and the production database untouched.
-- [ ] Nothing from §12 was implemented.
+- [x] `phase-1` CI is green: lint, typecheck, tests and build for both projects. *(Every push to the draft PR; 124 server tests.)*
+- [x] A fresh clone and clean Docker volume build `relay_dev` and `relay_test` from `0001` + `0002`; `#general` is seeded. *(M4: README followed from a fresh clone of `phase-1` at `e492dec`; `#general` exists once.)*
+- [x] `0002` rolls back to the Phase 0 schema and re-applies cleanly. *(Scratch databases: a schema dump after `down` is identical to a `0001`-only database; also on the fresh clone's `relay_dev`.)*
+- [x] Signup, login, history and sending work in the browser on the V2 schema. *(Headless Chrome with two users, in M2, M3 and on the fresh clone.)*
+- [x] Invalid signup input returns 400, never 500 (audit §4.7). *(`auth.test.ts`, `errors.test.ts`; also a request without a JSON body.)*
+- [x] Every constraint in `0002` has a test; concurrent sends are gapless; failed sends consume no `seq`. *(`schema.test.ts`, `ordering.test.ts`; both checked by breaking what they test.)*
+- [x] Message payloads carry `seq`; the REST and socket shapes are otherwise unchanged. *(`{ id, seq, userId, username, content, createdAt }`, built by one function for both.)*
+- [x] Production is still on Phase 0: nothing from `phase-1` merged to `main`, and the production database untouched. *(`main` = Phase 0 plus the approved Phase 0 fix `460af2b`; PR #1 is a draft; the production database was never connected to.)*
+- [x] Nothing from §12 was implemented. *(No conversation endpoints, rooms, sessions, REST send, client use of `seq`, `rev`, read endpoint, editing or display names.)*
 
 ---
 
@@ -258,14 +259,19 @@ Why this order: M1 adds the application-level rules first, on a schema that alre
 
 ## 13. Production cutover runbook (prepared, not executed in Phase 1)
 
-When the maintainer decides to move production to the V2 schema:
+When the maintainer decides to move production to the V2 schema. Reviewed at the end of Phase 1 (2026-09-27): the steps below add the migration precondition, the deploy order, the draft-PR merge, a check of the seed, and a rollback.
 
-1. Create a fresh, empty Neon database (or reset the existing one). Existing accounts and messages are discarded (D6).
-2. From a checkout of the code being deployed: `cd server && DATABASE_URL='<direct Neon URL>' npm run migrate` (applies `0001` and `0002`, seeds `#general`).
-3. In Render: set `DATABASE_URL` to the new database and set a **new** `JWT_SECRET` (user IDs restart at 1, so old tokens must not validate).
-4. Merge `phase-1` into `main`; Render deploys it.
-5. Smoke test on the live site: sign up, log in, send a message, reload to see it in history.
-6. Delete the old database once the new one is confirmed working.
+**Before starting:** CI is green on PR #1, and any commit on `main` that `phase-1` lacks has been merged into `phase-1`. Keep the current Render values of `DATABASE_URL` and `JWT_SECRET` for the rollback. Existing accounts and messages are discarded (D6): users sign up again.
+
+1. Create a **new, empty** Neon database and copy its **direct** (unpooled) connection string. Do not reuse the existing one without emptying it: it has the Phase 0 tables but no `pgmigrations` table, so `0001` would fail on it, and keeping it intact is what makes the rollback possible.
+2. From an up-to-date checkout of `phase-1`: `cd server && DATABASE_URL='<direct Neon URL>' npm run migrate`. It applies `0001_initial` and `0002_v2_schema`. Check the seed, for example in Neon's SQL editor: `SELECT id, type, visibility, name FROM conversations` returns one row, the public channel `general`.
+3. In Render, set `DATABASE_URL` to the new database and `JWT_SECRET` to a **new** random string (`openssl rand -hex 32`): user IDs restart at 1, so old tokens must not validate. Save without deploying if Render offers that; otherwise the Phase 0 code runs against the new database, and its requests fail, until step 4's deploy is live (a few minutes; the old database is not touched).
+4. Mark PR #1 ready and merge it with a merge commit, which keeps the per-task history: `gh pr ready 1 && gh pr merge 1 --merge`. Render deploys `main` with the new variables; Vercel deploys the client.
+5. Smoke test the live site: sign up with a mixed-case username (shown lowercase) and try an invalid one such as `bad-name` (400 with a message); log in; send messages from two browsers; reload to see the history. Browsers still holding an old token are logged out when their socket reconnects.
+6. Update the status lines (README, `docs/v2-design.md`, CLAUDE.md, this plan) to say that production runs Phase 1, with the date.
+7. Delete the old database once the new one is confirmed working.
+
+**Rollback (any time before step 7):** revert the merge on `main` (`git revert -m 1 <merge commit>`, then push), and restore the old `DATABASE_URL` and `JWT_SECRET` in Render. The old database was never modified, so Phase 0 comes back as it was. To try the cutover again later, revert that revert first.
 
 ---
 
@@ -281,3 +287,55 @@ Confirmed by the maintainer on 2026-09-27 (all as recommended in the draft):
 | 4 | Workflow | **Commit directly to `phase-1`.** The draft PR `phase-1 → main` runs CI; no separate pull request per milestone. |
 | 5 | Vercel previews | **Left enabled.** Previews call the production API; Phase 1's client change is compatible with it. |
 | 6 | Display names | **Lowercase usernames are shown in the chat temporarily.** Signup stores the typed name as `display_name`; showing it is left to a later phase. |
+
+---
+
+## 15. Completion record
+
+Phase 1 was completed on 2026-09-27 on the `phase-1` branch. One task per commit, each checked locally (tests, lint, typecheck, build) before committing; every push to the draft PR #1 (`phase-1 → main`, not merged) had green CI. Each milestone started after the maintainer approved the previous one.
+
+| Milestone | Commits | Notes and deviations from the plan |
+|---|---|---|
+| M0 — Branch and baseline | `b266a67` | GitHub cannot open a pull request between identical branches, so `phase-1` starts with an empty commit (approved by the maintainer). The maintainer confirmed that Render deploys only `main` and did not deploy the branch push. |
+| M1 — V2 identity rules | `65ed025`, `d4506eb` | Also fixed: signup or login without a JSON body returned 500; now 400 `VALIDATION_ERROR`. A missing-fields error now names the first problem ("Username is required.") and lists all of them in `details`. The signup form enforces the lengths and shows the character rule as a hint; the server enforces it (no `pattern` attribute, as planned). |
+| M2 — V2 schema and `#general` | `658750c`, `78f8c96`, `7cb5f04` | `migrate:create` produced `0002_v2-schema.sql`; renamed to the planned `0002_v2_schema.sql`. All constraints are named, and columns the design implies are required are `NOT NULL`. `conversations_shape` is written so that `conversations_type_values` is the constraint that rejects an unknown type (Postgres checks CHECK constraints in name order). `http/schemas.ts` also returns the username as typed, for `display_name`. The CLAUDE.md project status was corrected. The schema tests were checked by dropping constraints; that check changed the NOT NULL test to an explicit column list. |
+| M3 — Ordering guarantees | `ede2984`, `1a04cf4`, `eec53ec` | The message limit counts characters (code points) like the constraint's `char_length()`, so 4000 emoji are accepted. Checked by breaking each part (no rollback, `max(seq)+1` instead of the row lock, no read position, counting UTF-16 units): each break fails its test. |
+| M4 — Verification and handoff | `83da1fe`, `e492dec`, *(this change)* | ADRs 0001–0003 in `docs/adr/`. README, `docs/v2-design.md` and CLAUDE.md updated. The cutover runbook (§13) was reviewed and extended. |
+| Phase 0 fix on `main` | `460af2b`, merged in `f277f8e` | Found while preparing M3: `socket.emit('new_message', null)` from any logged-in client crashed the server with an unhandled rejection, in production too. Fixed on `main` with a regression test, following §4 (approved by the maintainer). CI was green and Vercel deployed it; Render deploys `main` automatically, but GitHub cannot show Render deploys, so the maintainer confirms that one in the Render dashboard. Then merged into `phase-1`. |
+
+**Verification (M4)**
+- **Fresh clone:** `phase-1` at `e492dec`, cloned from GitHub, with a clean Docker volume, following the README: install, `docker compose up -d --wait`, `.env` from `.env.example`, `npm run migrate` (`0001` + `0002`; `#general` once), `npm run dev` for both projects. In headless Chrome, two users signed up and sent messages both ways (socket payloads with `seq` 1 and 2), the page was reloaded (history by `seq`), the user logged out and back in with the email in another case, and an invalid username showed the server's 400 message. `npm test`: 124/124; lint, typecheck and build clean in both projects; `relay_test` built from `0001` + `0002`.
+- **Rollback:** `0002` down restores the Phase 0 tables and up re-applies, on scratch databases (schema dump identical to a `0001`-only database) and on the fresh clone's `relay_dev`.
+- **Production:** `main` contains no Phase 1 code (only migration `0001`; its one commit since the plan is the Phase 0 fix above). Vercel built only previews of `phase-1`. The production database was never connected to.
+
+**Final state:** 124 server tests in 9 files (auth, errors, messages, socket, ordering, schema, env, logger, pool). Lint, typecheck and build clean in both projects. No dependencies were added in Phase 1.
+
+**Known issues carried forward**
+- **Composer clears before the server answers:** a message the server rejects (over 4000 characters, or a failed save) shows an error toast, but its text is already gone from the composer. Pending, failed and retry states come in Phase 4.
+- **Read position moves only on send:** there is no read endpoint until Phase 6, so `last_read_seq` is the member's join position or their latest own message.
+- **Display names are stored, not shown:** the chat shows lowercase usernames (§14, decision 6).
+- **Socket payloads are checked by hand, not by zod:** D17 calls for schema validation of socket payloads; `new_message` is replaced by the REST send endpoint in Phase 4, which gets a zod schema.
+- **Dependency advisories:** `npm audit` reports 6 in the server (1 low, 1 moderate, 4 high; transitive, through socket.io and express, as in Phase 0) and 13 in the client (1 low, 2 moderate, 10 high; for example `engine.io-client`); fixes are available. Not addressed in Phase 1.
+- **CI runner image:** GitHub warns that `ubuntu-latest` moves to Ubuntu 26 from 2026-10-19.
+- **Local dev:** killing the process on port 5001 leaves `tsx watch` running (it waits for file changes); stop the dev server with Ctrl-C.
+- From Phase 0, unchanged: the intermittent 520 from Render's proxy after idle; client ESLint only lints `.js`/`.jsx`; pino-http logs 4xx/5xx request lines at `info`; Ctrl-C twice force-kills the dev server. The one-off test failure seen in Phase 0 did not recur.
+
+---
+
+## 16. Handoff to the cutover and Phase 2
+
+**Starting point:** `phase-1` as recorded in §15: the V2 schema from `docs/v2-design.md` §4 (without `sessions` and `rev`), and the single-room app running on `#general` with gapless per-conversation `seq`. Production still runs Phase 0 from `main`.
+
+**Decisions for the maintainer**
+1. **When to run the production cutover (§13):** before Phase 2 starts, or later. Until then, Phase 0 fixes go to `main` and `main` is merged into `phase-1`.
+2. **Where Phase 2 is developed:** on `phase-1` if the cutover has not happened (production must not receive Phase 2 before the cookie topology is chosen), or on a new branch from `main` after it.
+3. **The production cookie topology** (`docs/v2-design.md` §6) must be chosen before Phase 2 is deployed to production.
+
+**First step of Phase 2:** write `docs/phase-2-implementation-plan.md` in the same format as this plan, and get it approved before any Phase 2 code.
+
+**Notes for later phases**
+- **Phase 2:** the `sessions` table and password rules; the JWT (`{ id, username }`) is still issued by `routes/auth.js` and verified in two places.
+- **Phase 3:** new members join through `addMember()`, which starts their read position at `last_seq`. Removing a member must take the conversation's row lock, so a removal and a send are strictly ordered (ADR 0003).
+- **Phase 4:** the client starts using `seq`, the client supplies `client_id` (`UNIQUE (author_id, client_id)` makes retries idempotent), and the composer gets pending and failed states.
+- **Phase 5:** the D5 decision point; `rev`/`last_rev` are added, initialized from `seq`, if the full model is chosen (§14, decision 2).
+
