@@ -1,15 +1,7 @@
 // server/index.js
-import dotenv           from 'dotenv';
-import { fileURLToPath } from 'url';
-import { basename, dirname, resolve } from 'path';
-
+import { config }      from './config/env.js';   // loads .env and validates it first
 import pool            from './db/connection.js';
 import { createApp }   from './app.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-// The compiled build runs from server/dist/, one level deeper than the source.
-const rootEnv = basename(__dirname) === 'dist' ? '../../.env' : '../.env';
-dotenv.config({ path: resolve(__dirname, rootEnv) });
 
 // ── Express app + HTTP server + Socket.io (see app.js) ─────────────────────────
 const { httpServer } = createApp();
@@ -24,7 +16,7 @@ pool.query('SELECT NOW()', (err, result) => {
 });
 
 // ── Start server ───────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5001;
+const PORT = config.port;
 httpServer.listen(PORT, () => {       // ← httpServer.listen, not app.listen
   console.log(`✅ Server running on port ${PORT}`);
 });

@@ -3,6 +3,7 @@ import request from 'supertest';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool from '../db/connection.js';
+import { config } from '../config/env.js';
 import { signUp, startServer, type TestServer } from './helpers.js';
 
 let server: TestServer;
@@ -28,7 +29,7 @@ describe('POST /api/auth/signup', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.user).toEqual({ id: expect.any(Number), username: 'alice', email: 'alice@example.test' });
-    expect(jwt.verify(res.body.token, process.env.JWT_SECRET!)).toMatchObject({
+    expect(jwt.verify(res.body.token, config.jwtSecret)).toMatchObject({
       id: res.body.user.id,
       username: 'alice',
     });
@@ -74,7 +75,7 @@ describe('POST /api/auth/login', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.user).toEqual(user.user);
-    expect(jwt.verify(res.body.token, process.env.JWT_SECRET!)).toMatchObject({
+    expect(jwt.verify(res.body.token, config.jwtSecret)).toMatchObject({
       id: user.user.id,
       username: user.username,
     });

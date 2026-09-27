@@ -7,6 +7,7 @@ import { Server }       from 'socket.io';
 import authRoutes      from './routes/auth.js';
 import messagesRoutes  from './routes/messages.js';
 import socketHandler   from './socket/socketHandler.js';
+import { config }      from './config/env.js';
 
 // Builds the Express app, HTTP server and Socket.io server without listening.
 // index.js starts it for real; tests create their own instances.
@@ -14,7 +15,7 @@ export function createApp() {
   // ── Express app ──────────────────────────────────────────────────────────────
   const app = express();
 
-  const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+  const CLIENT_URL = config.clientUrl;
 
   app.use(cors({
     origin: CLIENT_URL,
