@@ -1,6 +1,6 @@
 # Relay — Phase 2 Implementation Plan
 
-**Status:** 🚧 **Approved, in progress** on the `phase-2` branch (draft PR #2). M0 and M1 are done (2026-09-28).
+**Status:** 🚧 **Approved, in progress** on the `phase-2` branch (draft PR #2). M0–M2 are done (2026-09-28).
 **History:** approved 2026-09-28; the maintainer's decisions on the open questions are recorded in [§16](#16-decisions-confirmed-at-approval).
 **Scope source:** `docs/v2-design.md` (§6 security model, §8 deployment, §9 Phase 2; decisions D3, D4, D15, D17), the deferred list in `docs/phase-0-implementation-plan.md` §15, and the handoff in `docs/phase-1-implementation-plan.md` §16.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
@@ -168,8 +168,8 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - Shutdown stops the sweep: after `close()`, no timer keeps the process alive.
 
 **Definition of done**
-- [ ] Logout cuts off the live sockets of that session.
-- [ ] Sockets of expired or revoked sessions are disconnected by the sweep.
+- [x] Logout cuts off the live sockets of that session. *(`test/sessionLifecycle.test.ts`; in headless Chrome, signing out in one tab closed the other tab's WebSocket.)*
+- [x] Sockets of expired or revoked sessions are disconnected by the sweep. *(`test/sessionLifecycle.test.ts`, including the real 5-minute timer under fake intervals; a SIGTERM with a socket open still shuts down cleanly.)*
 
 ---
 
