@@ -1,51 +1,18 @@
 // server/index.js
-import express          from 'express';
-import cors             from 'cors';
 import dotenv           from 'dotenv';
-import { createServer } from 'http';
-import { Server }       from 'socket.io';
 import { fileURLToPath } from 'url';
 import { basename, dirname, resolve } from 'path';
 
 import pool            from './db/connection.js';
-import authRoutes      from './routes/auth.js';
-import messagesRoutes  from './routes/messages.js';  // ← NEW
-import socketHandler   from './socket/socketHandler.js'; // ← NEW
+import { createApp }   from './app.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // The compiled build runs from server/dist/, one level deeper than the source.
 const rootEnv = basename(__dirname) === 'dist' ? '../../.env' : '../.env';
 dotenv.config({ path: resolve(__dirname, rootEnv) });
 
-// ── Express app ────────────────────────────────────────────────────────────────
-const app = express();
-
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
-
-app.use(cors({
-  origin: CLIENT_URL,
-  credentials: true,
-}));
-app.use(express.json());
-
-app.use('/api/auth',     authRoutes);
-app.use('/api/messages', messagesRoutes); // ← NEW
-
-app.get('/api/ping', (_req, res) => res.json({ message: 'Server is alive' }));
-
-// ── HTTP server + Socket.io ────────────────────────────────────────────────────
-// Socket.io needs a raw http.Server — it can't be attached to app directly.
-const httpServer = createServer(app);
-
-const io = new Server(httpServer, {
-  cors: {
-    origin: CLIENT_URL,
-    methods: ['GET', 'POST'],
-    credentials: true,
-  },
-});
-
-socketHandler(io);
+// ── Express app + HTTP server + Socket.io (see app.js) ─────────────────────────
+const { httpServer } = createApp();
 
 // ── Database connectivity check ────────────────────────────────────────────────
 pool.query('SELECT NOW()', (err, result) => {

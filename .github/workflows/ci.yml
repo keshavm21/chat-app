@@ -10,8 +10,25 @@ permissions:
 
 jobs:
   ci:
-    name: Lint, typecheck and build
+    name: Lint, typecheck, test and build
     runs-on: ubuntu-latest
+
+    # Test database only: same image and database name as docker-compose.yml.
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: relay
+          POSTGRES_PASSWORD: relay
+          POSTGRES_DB: relay_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U relay -d relay_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+
     steps:
       - uses: actions/checkout@v7
 
@@ -49,3 +66,13 @@ jobs:
       - name: Server — build
         working-directory: server
         run: npm run build
+      - name: Server — migrate test database
+        working-directory: server
+        run: npm run migrate
+        env:
+          DATABASE_URL: postgres://relay:relay@localhost:5433/relay_test?sslmode=disable
+      - name: Server — test
+        working-directory: server
+        run: npm test
+        env:
+          DATABASE_URL: postgres://relay:relay@localhost:5433/relay_test?sslmode=disable

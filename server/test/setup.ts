@@ -1,0 +1,26 @@
+import { afterAll, beforeEach } from 'vitest';
+import pool from '../db/connection.js';
+import { assertTestDatabaseUrl } from './testDatabase.js';
+
+// Runs in every test file's worker. Checks the connection string the app's
+// pool was actually built with (after connection.js has loaded .env). Creating
+// the pool does not connect, so this still runs before any query.
+assertTestDatabaseUrl(pool.options.connectionString);
+
+beforeEach(async () => {
+  // Checked inside the database as well: if the connected database is not a
+  // *_test database, the exception aborts the whole statement before TRUNCATE.
+  await pool.query(`
+    DO $$
+    BEGIN
+      IF right(current_database(), 5) <> '_test' THEN
+        RAISE EXCEPTION 'Refusing to truncate tables in non-test database %', current_database();
+      END IF;
+    END $$;
+    TRUNCATE users, messages RESTART IDENTITY CASCADE;
+  `);
+});
+
+afterAll(async () => {
+  await pool.end();
+});
