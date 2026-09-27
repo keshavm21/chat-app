@@ -1,6 +1,5 @@
-import { createContext, useContext, useState } from 'react';
-
-const AuthContext = createContext(null);
+import { useState } from 'react';
+import { AuthContext } from './authContext';
 
 export function AuthProvider({ children }) {
   // Initialise from localStorage so auth survives page refreshes.
@@ -35,11 +34,4 @@ export function AuthProvider({ children }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-// Custom hook — throw a clear error if used outside AuthProvider
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');
-  return ctx;
 }
