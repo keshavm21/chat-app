@@ -1,11 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
 import pool from '../db/connection.js';
-import { config } from '../config/env.js';
 import { logger } from '../lib/logger.js';
-import { signUp, startServer, type TestServer } from './helpers.js';
+import { sessionCookieOf, signUp, startServer, type TestServer } from './helpers.js';
 
 let server: TestServer;
 
@@ -29,15 +27,11 @@ async function userCount() {
 }
 
 describe('POST /api/auth/signup', () => {
-  it('creates the user, returns a token and stores a bcrypt hash of the password', async () => {
+  it('creates the user, returns it without a token and stores a bcrypt hash of the password', async () => {
     const res = await request(server.httpServer).post('/api/auth/signup').send(alice);
 
     expect(res.status).toBe(201);
-    expect(res.body.user).toEqual({ id: expect.any(Number), username: 'alice', email: 'alice@example.test' });
-    expect(jwt.verify(res.body.token, config.jwtSecret)).toMatchObject({
-      id: res.body.user.id,
-      username: 'alice',
-    });
+    expect(res.body).toEqual({ user: { id: expect.any(Number), username: 'alice', email: 'alice@example.test' } });
 
     const { rows } = await pool.query('SELECT password_hash FROM users WHERE id = $1', [res.body.user.id]);
     expect(rows[0].password_hash).not.toBe(alice.password);
@@ -59,7 +53,7 @@ describe('POST /api/auth/signup', () => {
     expect(rows).toEqual([{ name: 'general', role: 'member', last_read_seq: 7 }]);
   });
 
-  it('creates neither the user nor the membership if either insert fails', async () => {
+  it('creates neither the user nor the membership, and sets no cookie, if either insert fails', async () => {
     const logged = vi.spyOn(logger, 'error');
     // Without #general, adding the membership fails after the user was inserted.
     await pool.query(`DELETE FROM conversations WHERE name = 'general'`);
@@ -68,6 +62,7 @@ describe('POST /api/auth/signup', () => {
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Server error during signup.' } });
+    expect(res.headers['set-cookie']).toBeUndefined();
     expect(await userCount()).toBe(0);
     expect(logged).toHaveBeenCalledOnce();
   });
@@ -161,7 +156,6 @@ describe('POST /api/auth/signup', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.user.username).toBe('alice_1');
-    expect(jwt.verify(res.body.token, config.jwtSecret)).toMatchObject({ username: 'alice_1' });
     // The display name keeps the username as typed (trimmed).
     const { rows } = await pool.query('SELECT username, display_name FROM users');
     expect(rows).toEqual([{ username: 'alice_1', display_name: 'Alice_1' }]);
@@ -213,7 +207,7 @@ describe('POST /api/auth/signup', () => {
 });
 
 describe('POST /api/auth/login', () => {
-  it('returns the user and a valid token for correct credentials', async () => {
+  it('returns the user without a token, and starts a session, for correct credentials', async () => {
     const user = await signUp(server);
 
     const res = await request(server.httpServer)
@@ -221,11 +215,9 @@ describe('POST /api/auth/login', () => {
       .send({ email: user.email, password: user.password });
 
     expect(res.status).toBe(200);
-    expect(res.body.user).toEqual(user.user);
-    expect(jwt.verify(res.body.token, config.jwtSecret)).toMatchObject({
-      id: user.user.id,
-      username: user.username,
-    });
+    expect(res.body).toEqual({ user: user.user });
+    const me = await request(server.httpServer).get('/api/auth/me').set('Cookie', sessionCookieOf(res));
+    expect(me.body).toEqual({ user: user.user });
   });
 
   it('responds identically to an unknown email and a wrong password', async () => {
@@ -242,6 +234,8 @@ describe('POST /api/auth/login', () => {
     expect(wrongPassword.status).toBe(401);
     expect(unknownEmail.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' } });
     expect(wrongPassword.body).toEqual(unknownEmail.body);
+    expect(unknownEmail.headers['set-cookie']).toBeUndefined();
+    expect(wrongPassword.headers['set-cookie']).toBeUndefined();
   });
 
   it('normalizes the email the same way as signup before the lookup', async () => {

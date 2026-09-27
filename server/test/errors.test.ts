@@ -4,7 +4,7 @@ import request from 'supertest';
 import pool from '../db/connection.js';
 import { errorHandler } from '../http/errorHandler.js';
 import { logger } from '../lib/logger.js';
-import { startServer, type TestServer } from './helpers.js';
+import { signUp, startServer, type TestServer } from './helpers.js';
 
 let server: TestServer;
 
@@ -100,25 +100,15 @@ describe('REST error envelope', () => {
     });
   });
 
-  it('returns 403 INVALID_TOKEN for an invalid token', async () => {
-    const res = await request(server.httpServer)
-      .get('/api/messages')
-      .set('Authorization', 'Bearer not-a-valid-token');
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { code: 'INVALID_TOKEN', message: 'Invalid or expired token.' } });
-  });
-
   it('returns the route’s 500 message, without internal details, when the database fails', async () => {
-    const { token } = (
-      await request(server.httpServer)
-        .post('/api/auth/signup')
-        .send({ username: 'dave', email: 'dave@example.test', password: 'password123' })
-    ).body;
+    const dave = await signUp(server);
     const logged = vi.spyOn(logger, 'error');
-    vi.spyOn(pool, 'query').mockRejectedValueOnce(new Error('db exploded at 10.0.0.5'));
+    const query = pool.query.bind(pool);
+    vi.spyOn(pool, 'query')
+      .mockImplementationOnce(query as never) // the session lookup (requireSession) succeeds
+      .mockRejectedValueOnce(new Error('db exploded at 10.0.0.5'));
 
-    const res = await request(server.httpServer).get('/api/messages').set('Authorization', `Bearer ${token}`);
+    const res = await request(server.httpServer).get('/api/messages').set('Cookie', dave.cookie);
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch messages.' } });

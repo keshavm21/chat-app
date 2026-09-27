@@ -62,8 +62,8 @@ describe('message seq', () => {
   it('gives 20 concurrent sends from two users exactly seq 1–20, with no gaps or duplicates', async () => {
     const alice = await signUp(server);
     const bob = await signUp(server);
-    const aliceSocket = await connectSocket(server.url, alice.token);
-    const bobSocket = await connectSocket(server.url, bob.token);
+    const aliceSocket = await connectSocket(server.url, alice.cookie);
+    const bobSocket = await connectSocket(server.url, bob.cookie);
 
     const broadcasts = collectEvents<Message>(aliceSocket, 'message', 20);
     // Not awaited: all 20 sends are in flight at once and contend for #general's row.
@@ -89,12 +89,12 @@ describe('message seq', () => {
   it('does not use up a seq when a send fails after taking one: the next message gets the next seq', async () => {
     const alice = await signUp(server);
     const carol = await signUp(server);
-    const aliceSocket = await connectSocket(server.url, alice.token);
-    const carolSocket = await connectSocket(server.url, carol.token);
+    const aliceSocket = await connectSocket(server.url, alice.cookie);
+    const carolSocket = await connectSocket(server.url, carol.cookie);
     expect((await send(aliceSocket, 'first')).seq).toBe(1);
 
-    // Carol's token stays valid after her account is deleted, which also deletes her
-    // membership: her send takes #general's next seq, then finds she is not a member.
+    // Carol's socket stays connected after her account is deleted, which also deletes
+    // her membership: her send takes #general's next seq, then finds she is not a member.
     await pool.query('DELETE FROM users WHERE id = $1', [carol.user.id]);
     const rejected = nextEvent(carolSocket, 'error');
     carolSocket.emit('new_message', { content: 'from a deleted account' });
@@ -112,8 +112,8 @@ describe('message seq', () => {
   it("sets the sender's last_read_seq to the seq of their latest message", async () => {
     const alice = await signUp(server);
     const bob = await signUp(server);
-    const aliceSocket = await connectSocket(server.url, alice.token);
-    const bobSocket = await connectSocket(server.url, bob.token);
+    const aliceSocket = await connectSocket(server.url, alice.cookie);
+    const bobSocket = await connectSocket(server.url, bob.cookie);
 
     await send(aliceSocket, 'one');
     await send(aliceSocket, 'two');
@@ -141,7 +141,7 @@ describe('history order', () => {
       [user.user.id],
     );
 
-    const res = await request(server.httpServer).get('/api/messages').set('Authorization', `Bearer ${user.token}`);
+    const res = await request(server.httpServer).get('/api/messages').set('Cookie', user.cookie);
 
     expect(res.body.messages.map((m: Message) => m.content)).toEqual(['first', 'second', 'third']);
   });
@@ -156,7 +156,7 @@ describe('history order', () => {
       [user.user.id],
     );
 
-    const res = await request(server.httpServer).get('/api/messages').set('Authorization', `Bearer ${user.token}`);
+    const res = await request(server.httpServer).get('/api/messages').set('Cookie', user.cookie);
 
     expect(res.body.messages.map((m: Message) => m.seq)).toEqual(Array.from({ length: 50 }, (_, i) => i + 6));
   });
@@ -165,7 +165,7 @@ describe('history order', () => {
 describe('message length', () => {
   it(`rejects a message over ${MESSAGE_MAX_LENGTH} characters with an error event and stores nothing`, async () => {
     const alice = await signUp(server);
-    const socket = await connectSocket(server.url, alice.token);
+    const socket = await connectSocket(server.url, alice.cookie);
 
     const rejected = nextEvent(socket, 'error');
     socket.emit('new_message', { content: 'x'.repeat(MESSAGE_MAX_LENGTH + 1) });

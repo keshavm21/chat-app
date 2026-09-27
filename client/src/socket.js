@@ -9,12 +9,9 @@ const socket = io(URL, {
   // socket.disconnect() on unmount so the lifecycle is explicit.
   autoConnect: false,
 
-  // Callback form: the token is fetched fresh on every connection attempt,
-  // so a logout → login cycle works correctly without recreating the socket.
-  auth: (cb) => {
-    const token = localStorage.getItem('relay_token');
-    cb({ token });
-  },
+  // The handshake carries the httpOnly session cookie, which the server checks on
+  // every connection attempt, so a logout → login cycle works without recreating the socket.
+  withCredentials: true,
 });
 
 export default socket;

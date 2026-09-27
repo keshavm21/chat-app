@@ -16,3 +16,15 @@ export const MESSAGE_MAX_LENGTH = 4000;
 
 /** Maximum length of a session's stored user agent, in characters; longer ones are cut. */
 export const USER_AGENT_MAX_LENGTH = 512;
+
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+/** A session ends this long after login however active it is (sessions.expires_at); also the cookie's Max-Age. */
+export const SESSION_MAX_AGE_MS = 30 * DAY_MS;
+
+/** A session also ends after this long without use (sessions.last_seen_at). */
+export const SESSION_IDLE_TIMEOUT_MS = 7 * DAY_MS;
+
+/** last_seen_at is moved forward at most this often, so most requests write nothing. */
+export const SESSION_TOUCH_INTERVAL_MS = HOUR_MS;

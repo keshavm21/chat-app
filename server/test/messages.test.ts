@@ -14,11 +14,16 @@ afterAll(async () => {
 });
 
 describe('GET /api/messages', () => {
-  it('returns 401 without a token', async () => {
-    const res = await request(server.httpServer).get('/api/messages');
-
-    expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: { code: 'UNAUTHENTICATED', message: 'Access denied. No token provided.' } });
+  it('returns 401 without a valid session', async () => {
+    for (const res of [
+      await request(server.httpServer).get('/api/messages'),
+      await request(server.httpServer).get('/api/messages').set('Cookie', 'relay_session=unknown-token'),
+    ]) {
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual({
+        error: { code: 'UNAUTHENTICATED', message: 'Your session has expired. Please log in again.' },
+      });
+    }
   });
 
   it('returns an empty list when there are no messages', async () => {
@@ -26,7 +31,7 @@ describe('GET /api/messages', () => {
 
     const res = await request(server.httpServer)
       .get('/api/messages')
-      .set('Authorization', `Bearer ${user.token}`);
+      .set('Cookie', user.cookie);
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ messages: [] });
@@ -49,7 +54,7 @@ describe('GET /api/messages', () => {
 
     const res = await request(server.httpServer)
       .get('/api/messages')
-      .set('Authorization', `Bearer ${user.token}`);
+      .set('Cookie', user.cookie);
 
     expect(res.status).toBe(200);
     expect(res.body.messages.map((m: { content: string }) => m.content)).toEqual(['first', 'second', 'third']);

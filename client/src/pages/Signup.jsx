@@ -21,7 +21,7 @@ export default function Signup() {
     setLoading(true);
     try {
       const { data } = await api.post('/api/auth/signup', form);
-      login(data.token, data.user);
+      login(data.user);
       navigate('/chat');
     } catch (err) {
       setError(getErrorMessage(err, 'Signup failed. Please try again.'));

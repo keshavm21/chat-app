@@ -16,7 +16,7 @@ const rootEnv = basename(dirname(here)) === 'dist' ? '../../../.env' : '../../.e
 dotenv.config({ path: resolve(here, rootEnv), quiet: true });
 
 // ── Schema ─────────────────────────────────────────────────────────────────────
-// An empty value (e.g. `JWT_SECRET=` in .env) is treated the same as an unset one.
+// An empty value (e.g. `PORT=` in .env) is treated the same as an unset one.
 const blankAsUnset = <T extends z.ZodType>(schema: T) =>
   z.preprocess((value) => (value === '' ? undefined : value), schema);
 
@@ -28,7 +28,6 @@ const schema = z
     NODE_ENV:     blankAsUnset(z.enum(['development', 'production', 'test']).default('development')),
     PORT:         blankAsUnset(port.default(5001)),
     CLIENT_URL:   blankAsUnset(z.url().default('http://localhost:5173')),
-    JWT_SECRET:   blankAsUnset(z.string({ error: 'Required' })),
     DATABASE_URL: blankAsUnset(z.string().optional()),
     DB_USER:      blankAsUnset(z.string().optional()),
     DB_HOST:      blankAsUnset(z.string().optional()),
@@ -73,7 +72,6 @@ export function parseEnv(env: Record<string, string | undefined>) {
     nodeEnv:   e.NODE_ENV,
     port:      e.PORT,
     clientUrl: e.CLIENT_URL,
-    jwtSecret: e.JWT_SECRET,
     logLevel:  e.LOG_LEVEL,
     // `url` wins when set; the DB_* fields are then unused (same precedence as before).
     database: Object.freeze({
