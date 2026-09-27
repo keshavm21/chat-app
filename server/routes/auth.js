@@ -8,6 +8,7 @@ import { logger } from '../lib/logger.js';
 
 const router = express.Router();
 const SALT_ROUNDS = 10;
+const PG_UNIQUE_VIOLATION = '23505';
 
 // ─── POST /api/auth/signup ────────────────────────────────────────────────────
 router.post('/signup', async (req, res, next) => {
@@ -50,6 +51,11 @@ router.post('/signup', async (req, res, next) => {
       user: { id: newUser.id, username: newUser.username, email: newUser.email },
     });
   } catch (err) {
+    // Two signups can both pass the pre-check above before either inserts; the
+    // unique constraint then rejects the second. That is a conflict, not a crash.
+    if (err.code === PG_UNIQUE_VIOLATION) {
+      return next(new AppError(409, ErrorCode.CONFLICT, 'Email or username is already taken.'));
+    }
     logger.error({ err }, 'Signup error');
     next(new AppError(500, ErrorCode.INTERNAL_ERROR, 'Server error during signup.'));
   }
