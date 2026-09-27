@@ -3,8 +3,11 @@ import jwt  from 'jsonwebtoken';
 import { config } from '../config/env.js';
 import { withTransaction } from '../db/transaction.js';
 import { logger } from '../lib/logger.js';
-import { allocateSeq, findGeneralId } from '../repositories/conversations.js';
+import { allocateSeq, findGeneralId, markRead } from '../repositories/conversations.js';
 import { createMessage } from '../repositories/messages.js';
+
+// Thrown inside the send transaction to roll it back when the sender is not a member.
+class NotAMemberError extends Error {}
 
 export default function socketHandler(io) {
 
@@ -43,7 +46,9 @@ export default function socketHandler(io) {
     // The payload is whatever the client sent (possibly null): never destructure it.
     socket.on('new_message', async (payload) => {
       const content = payload?.content;
-      if (!content || typeof content !== 'string' || !content.trim()) return;
+      if (typeof content !== 'string') return;
+      const text = content.trim();
+      if (!text) return; // empty messages are ignored
 
       try {
         // Everything goes to #general for now. allocateSeq() locks #general's row
@@ -51,13 +56,24 @@ export default function socketHandler(io) {
         const message = await withTransaction(async (client) => {
           const conversationId = await findGeneralId(client);
           const seq = await allocateSeq(client, conversationId);
-          return createMessage(client, { conversationId, seq, authorId: socket.user.id, content: content.trim() });
+          const created = await createMessage(client, { conversationId, seq, authorId: socket.user.id, content: text });
+          // Not a member (e.g. the token of a deleted user): roll back, which also
+          // gives the seq back, so it leaves no gap.
+          if (!created) throw new NotAMemberError();
+          // The sender has read everything up to their own message.
+          await markRead(client, conversationId, socket.user.id, seq);
+          return created;
         });
 
         // Only after COMMIT: broadcast to ALL connected clients (including the sender
         // so their message appears in the same pipeline as everyone else's).
         io.emit('message', message);
       } catch (err) {
+        if (err instanceof NotAMemberError) {
+          log.warn('Message rejected: the sender is not a member of #general');
+          socket.emit('error', { message: 'You are not a member of this conversation.' });
+          return;
+        }
         log.error({ err }, 'DB error saving message');
         // Only tell the sender — don't crash the whole server.
         socket.emit('error', { message: 'Failed to save message.' });

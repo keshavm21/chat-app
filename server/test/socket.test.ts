@@ -106,14 +106,14 @@ describe('new_message', () => {
     const alice = await signUp(server);
     const socket = await connectSocket(server.url, alice.token);
 
-    const next = nextEvent<{ content: string }>(socket, 'message');
+    const next = nextEvent<{ seq: number; content: string }>(socket, 'message');
     for (const payload of [null, 'text', 42, {}, { content: 42 }, { content: '' }, { content: ' \n ' }]) {
       socket.emit('new_message', payload);
     }
     socket.emit('new_message', { content: 'still here' });
 
-    // The first broadcast is the real message: nothing before it was stored.
-    expect(await next).toMatchObject({ content: 'still here' });
+    // The first broadcast is the real message, with the first seq: nothing before it was stored.
+    expect(await next).toMatchObject({ seq: 1, content: 'still here' });
     const { rows } = await pool.query('SELECT content FROM messages');
     expect(rows).toEqual([{ content: 'still here' }]);
   });
