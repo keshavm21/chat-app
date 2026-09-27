@@ -2,6 +2,8 @@
 
 Read-only audit of the repository at commit `2e72c1d`. Line numbers refer to that commit and will drift as code changes.
 
+> **Historical snapshot.** This describes the app before Phase 0. Phase 0 (completed 2026-09-27) fixed audit §4 items 1, 2, 6 and 9 and the port mismatch, and added migrations, tests, CI and logging; see `docs/phase-0-implementation-plan.md` §16 for what changed and what remains open.
+
 **How to read this document**
 
 - Unmarked statements are **verified**: they were confirmed by reading the source, running `eslint`, checking installed library code in `node_modules`, or inspecting git history.

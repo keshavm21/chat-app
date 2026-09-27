@@ -11,6 +11,14 @@ Relay: a single-room real-time group chat. Two independent npm projects, no root
 
 Deployed as server on Render, client on Vercel, DB on Neon.
 
+## Project status
+
+Relay is being evolved into Relay V2 in phases (`docs/v2-design.md` §9; decisions D1–D17 in §10).
+
+- **Phase 0 (foundation) is complete** (2026-09-27): see `docs/phase-0-implementation-plan.md`, §16 for the completion record and known issues.
+- **Phase 1 (V2 data model on a fresh database, D6) is next.** Its first step is writing `docs/phase-1-implementation-plan.md` and getting it approved — no Phase 1 code before that. The Phase 0 plan's §17 lists the carry-over items and the decisions to settle.
+- Working rules that held for Phase 0: one task per commit; don't implement items from a plan's deferred list; if a step needs something the plan doesn't list, stop and ask. Never connect to or modify the production database.
+
 ## Commands
 
 ```bash

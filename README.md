@@ -4,10 +4,11 @@
 
 **A full-stack real-time group chat app — JWT auth, live Socket.io messaging, and PostgreSQL history.**
 
-[![Node](https://img.shields.io/badge/node-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org)
+[![CI](https://github.com/keshavm21/chat-app/actions/workflows/ci.yml/badge.svg)](https://github.com/keshavm21/chat-app/actions/workflows/ci.yml)
+[![Node](https://img.shields.io/badge/node-24-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![React](https://img.shields.io/badge/react-19-20232a?logo=react&logoColor=61dafb)](https://react.dev)
 [![Socket.io](https://img.shields.io/badge/socket.io-4.x-010101?logo=socket.io)](https://socket.io)
-[![PostgreSQL](https://img.shields.io/badge/postgresql-14+-4169e1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
+[![PostgreSQL](https://img.shields.io/badge/postgresql-17-4169e1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
 
 [Live Demo](https://relay-chat-app.vercel.app/) · [Report a Bug](https://github.com/keshavm21/chat-app/issues)
 
@@ -37,16 +38,36 @@
 
 ---
 
+## Project Status and Docs
+
+Relay is being evolved into **Relay V2**: public and private channels, direct messages, per-channel roles, and reliable delivery across reconnects. The work is done in phases.
+
+| Phase | Status |
+|---|---|
+| **0 — Foundation:** migrations, TypeScript tooling, integration tests, CI, config validation, error envelope, structured logging, graceful shutdown | ✅ Complete |
+| **1 — V2 data model** on a fresh database | Next |
+| 2–8 — sessions, conversations, messaging, sync, awareness, editing, hardening | Planned |
+
+- [Current-state audit](./docs/current-state-audit.md) — the analysis the V2 work starts from
+- [V2 design](./docs/v2-design.md) — target architecture, decisions (D1–D17) and the full roadmap
+- [Phase 0 implementation plan](./docs/phase-0-implementation-plan.md) — tasks, verification and the completion record
+
+---
+
 ## Tech Stack
 
 | Layer | Technology | Notes |
 |---|---|---|
 | Frontend | React 19 (Vite) | SPA with fast HMR dev experience |
 | Styling | Tailwind CSS v3 | Utility-first; rapid, consistent UI |
-| Backend | Node.js + Express 5 | Lightweight REST API, ESM throughout |
+| Backend | Node.js + Express 5 | REST API, ESM throughout |
 | Real-time | Socket.io 4.x | WebSocket abstraction with fallback transport |
 | Auth | JWT + bcrypt | Stateless; token verified on HTTP and WebSocket layers |
-| Database | PostgreSQL (Neon) | Serverless Postgres with connection pooling |
+| Database | PostgreSQL 17 | Neon in production, Docker locally; schema managed by SQL migrations (node-pg-migrate) |
+| Validation and errors | zod, one JSON error envelope | The server refuses to start with invalid config; every REST error is `{ error: { code, message } }` |
+| Logging | pino + pino-http | JSON logs with tokens, cookies and passwords redacted |
+| Testing | Vitest + Supertest + socket.io-client | Integration tests against a real PostgreSQL test database |
+| Tooling | TypeScript (incremental), ESLint, GitHub Actions | CI runs lint, typecheck, tests and build on every push and pull request |
 | Deployment | Render + Vercel | Render for the Express server; Vercel for the React frontend |
 
 ---
@@ -54,32 +75,45 @@
 ## Project Structure
 
 ```
-relay/
+chat-app/
+├── .github/workflows/ci.yml         — CI: lint, typecheck, test, build
+├── docker-compose.yml               — local PostgreSQL 17 (relay_dev + relay_test)
+├── .env.example                     — server environment variables
+├── docs/                            — audit, V2 design, Phase 0 plan
 ├── client/                          ← React frontend (Vite)
 │   └── src/
 │       ├── api/axios.js             — Axios instance with JWT interceptor
 │       ├── components/              — ProtectedRoute, GuestRoute
-│       ├── context/AuthContext.jsx  — Token + user state (localStorage)
+│       ├── context/                 — AuthProvider (token + user in localStorage), useAuth
+│       ├── lib/errors.ts            — reads error messages from server responses
 │       ├── pages/                   — Landing, Login, Signup, Chat
 │       ├── socket.js                — Socket.io singleton (autoConnect: false)
 │       └── App.jsx                  — React Router route definitions
 └── server/                          ← Express backend
+    ├── config/env.ts                — loads .env and validates every variable
     ├── db/connection.js             — PostgreSQL connection pool
+    ├── http/                        — JSON 404 and the central error handler
+    ├── lib/                         — AppError + error codes, pino logger
     ├── middleware/verifyToken.js    — JWT verification middleware
+    ├── migrations/                  — SQL migrations
     ├── routes/auth.js               — POST /api/auth/signup, /login
     ├── routes/messages.js           — GET /api/messages (last 50, protected)
     ├── socket/socketHandler.js      — Socket.io event handlers
-    └── index.js                     — HTTP server + Socket.io bootstrap
+    ├── test/                        — integration tests
+    ├── app.js                       — builds Express + Socket.io (without listening)
+    └── index.js                     — starts the server; graceful shutdown
 ```
 
 ---
 
 ## Local Setup
 
+All commands start from the repository root.
+
 ### Prerequisites
 
-- Node.js 20+
-- PostgreSQL 14+
+- Node.js 24 (22.12+ also works; CI and Render use 24)
+- Docker with Docker Compose, for the local PostgreSQL
 
 ### 1. Clone and install
 
@@ -89,64 +123,40 @@ cd chat-app
 
 cd server && npm install
 cd ../client && npm install
+cd ..
 ```
 
-### 2. Create the database
+### 2. Start PostgreSQL
 
-```sql
-CREATE DATABASE relay;
-\c relay
-
-CREATE TABLE users (
-  id         SERIAL PRIMARY KEY,
-  username   VARCHAR(50)  NOT NULL UNIQUE,
-  email      VARCHAR(100) NOT NULL UNIQUE,
-  password   VARCHAR(255) NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE messages (
-  id         SERIAL PRIMARY KEY,
-  user_id    INT REFERENCES users(id),
-  username   VARCHAR(50),
-  content    TEXT NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
+```bash
+docker compose up -d --wait
 ```
+
+This starts PostgreSQL 17 on `localhost:5433` (not 5432, so it doesn't clash with a locally installed PostgreSQL). On first start it creates two databases: `relay_dev` for the app and `relay_test` for the tests. `docker compose down` stops it; `docker compose down -v` also deletes the data.
 
 ### 3. Environment variables
 
-Create `.env` in the **project root** (next to `client/` and `server/`):
-
-```env
-# Database
-DB_USER=postgres
-DB_HOST=localhost
-DB_NAME=relay
-DB_PASSWORD=yourpassword
-DB_PORT=5432
-
-# Auth
-JWT_SECRET=replace-with-a-long-random-string
-
-# Server
-PORT=5001
-CLIENT_URL=http://localhost:5173
+```bash
+cp .env.example .env
 ```
 
-Create `client/.env.local`:
+Then set `JWT_SECRET` in `.env` to a long random string, for example the output of `openssl rand -hex 32`. `.env.example` documents every variable; its `DATABASE_URL` already points at `relay_dev` (keep `?sslmode=disable` for the local database). The server checks all variables at startup and exits with a message naming any that are missing or invalid.
 
-```env
-VITE_API_URL=http://localhost:5001
-```
+The client needs no configuration locally: it talks to `http://localhost:5001` unless `VITE_API_URL` is set (for example in `client/.env.local`).
 
-> **Note:** `client/src/api/axios.js` falls back to port `5000` if `VITE_API_URL` is not set, but the server runs on `5001`. Always set this variable — or update the fallback in `axios.js` to `http://localhost:5001`.
-
-### 4. Run
+### 4. Create the schema
 
 ```bash
-# Terminal 1 — server
-cd server && node index.js
+cd server && npm run migrate
+```
+
+This applies the SQL migrations in `server/migrations/` to `relay_dev`. Running it again reports that there is nothing to migrate.
+
+### 5. Run
+
+```bash
+# Terminal 1 — server on http://localhost:5001 (restarts on file changes)
+cd server && npm run dev
 
 # Terminal 2 — client
 cd client && npm run dev
@@ -154,51 +164,56 @@ cd client && npm run dev
 
 Open [http://localhost:5173](http://localhost:5173). Open a second browser tab to see real-time messaging in action.
 
+The server logs JSON lines. For readable output, run `npm run dev | npx pino-pretty` instead.
+
+### 6. Tests and checks
+
+```bash
+# Server: integration tests (needs the database from step 2), then static checks
+cd server && npm test
+npm run lint && npm run typecheck && npm run build
+
+# Client
+cd ../client && npm run lint && npm run typecheck && npm run build
+```
+
+`npm test` runs against `relay_test` and applies the migrations itself. It refuses to run against any database that is not a local `*_test` database, so it cannot touch `relay_dev` or production. CI runs the same checks on every push and pull request.
+
 ---
 
 ## Deployment
 
 ### Neon — PostgreSQL database
 
-1. Create a free project at [neon.tech](https://neon.tech).
-2. Copy the **connection string** from the Neon dashboard (it looks like `postgresql://user:pass@host/dbname?sslmode=require`).
-3. Run the `CREATE TABLE` SQL above in the Neon SQL editor.
-4. Use this connection string as `DATABASE_URL` in your Render environment variables (see below).
+1. Create a project at [neon.tech](https://neon.tech) and copy its **direct** (not pooled) connection string. It looks like `postgresql://user:pass@host/dbname?sslmode=require`.
+2. Create the schema by running the migrations against it once, from your machine:
 
-Update `server/db/connection.js` to support `DATABASE_URL` before deploying:
+   ```bash
+   cd server && DATABASE_URL='<neon connection string>' npm run migrate
+   ```
 
-```js
-const pool = process.env.DATABASE_URL
-  ? new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
-    })
-  : new Pool({
-      user:     process.env.DB_USER,
-      host:     process.env.DB_HOST,
-      database: process.env.DB_NAME,
-      password: process.env.DB_PASSWORD,
-      port:     process.env.DB_PORT,
-    });
-```
+3. Use the connection string as `DATABASE_URL` in the Render environment variables (below).
 
-This keeps local development working while supporting Neon's `DATABASE_URL` in production.
+> The live demo's database was created before migrations existed. Per the V2 plan it is replaced by a fresh database when Phase 1 is deployed ([V2 design §4](./docs/v2-design.md)), so don't run migrations against it.
 
 ### Render — Express server
 
-1. Push the repo to GitHub.
-2. In [Render](https://render.com): **New** → **Web Service** → connect your GitHub repo.
-3. Set the **Root Directory** to `server/`.
-4. Build command: `npm install` · Start command: `node index.js`.
-5. Add environment variables in the Render dashboard:
+1. In [Render](https://render.com): **New** → **Web Service** → connect the GitHub repo.
+2. Set the **Root Directory** to `server/`.
+3. Build command: `npm ci --include=dev && npm run build` · Start command: `npm start`. The build needs the dev dependencies because it compiles with TypeScript.
+4. Add environment variables in the Render dashboard:
 
    | Variable | Value |
    |---|---|
    | `DATABASE_URL` | your Neon connection string |
    | `JWT_SECRET` | a long random string |
-   | `CLIENT_URL` | your Vercel frontend URL (from the step below) |
+   | `CLIENT_URL` | your Vercel frontend URL, e.g. `https://your-app.vercel.app` |
+   | `LOG_LEVEL` | optional; defaults to `info` |
 
-6. Note your Render server URL (e.g. `https://relay-server.onrender.com`).
+   Render sets `NODE_ENV` and `PORT` itself. If a variable is missing or invalid, the server exits at startup and the log names it.
+5. Note your Render server URL (e.g. `https://relay-server.onrender.com`).
+
+On every deploy Render sends the old instance `SIGTERM`. The server shuts down gracefully, and connected clients reconnect to the new instance automatically.
 
 ### Vercel — React frontend
 
