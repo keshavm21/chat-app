@@ -5,7 +5,7 @@ import dotenv           from 'dotenv';
 import { createServer } from 'http';
 import { Server }       from 'socket.io';
 import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import { basename, dirname, resolve } from 'path';
 
 import pool            from './db/connection.js';
 import authRoutes      from './routes/auth.js';
@@ -13,7 +13,9 @@ import messagesRoutes  from './routes/messages.js';  // ← NEW
 import socketHandler   from './socket/socketHandler.js'; // ← NEW
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, '../.env') });
+// The compiled build runs from server/dist/, one level deeper than the source.
+const rootEnv = basename(__dirname) === 'dist' ? '../../.env' : '../.env';
+dotenv.config({ path: resolve(__dirname, rootEnv) });
 
 // ── Express app ────────────────────────────────────────────────────────────────
 const app = express();
