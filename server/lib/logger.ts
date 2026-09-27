@@ -9,7 +9,8 @@ export const loggerOptions = {
   redact: {
     paths: [
       'req.headers.authorization', // JWT bearer token
-      'req.headers.cookie',        // browsers send every localhost cookie to every port
+      'req.headers.cookie',        // the session token; browsers also send every localhost cookie to every port
+      'res.headers["set-cookie"]', // the session token, set at signup and login
       'password',
       '*.password',
       '*.*.password',              // e.g. { req: { body: { password } } }

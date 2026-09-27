@@ -48,6 +48,22 @@ describe('logger redaction', () => {
     expect(entries.find((e) => e.msg === 'login attempt')?.body.password).toBe('[Redacted]');
   });
 
+  it('hides the Set-Cookie response header, which carries the session token', async () => {
+    const { logger, lines } = capturingLogger();
+    const app = express();
+    app.use(pinoHttp({ logger }));
+    app.post('/api/auth/login', (_req, res) => {
+      res.cookie('relay_session', 'SECRET-SESSION-TOKEN', { httpOnly: true, sameSite: 'lax' });
+      res.json({ user: { id: 1 } });
+    });
+
+    await request(app).post('/api/auth/login').send({});
+
+    expect(lines.join('\n')).not.toContain('SECRET-SESSION-TOKEN');
+    const completed = lines.map((line) => JSON.parse(line)).find((e) => e.msg === 'request completed');
+    expect(completed.res.headers['set-cookie']).toBe('[Redacted]');
+  });
+
   it('hides a Postgres error DETAIL, which can contain row values, but keeps the message', () => {
     const { logger, lines } = capturingLogger();
     const pgError = Object.assign(new Error('new row for relation "users" violates check constraint'), {
