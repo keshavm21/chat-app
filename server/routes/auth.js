@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import pool from '../db/connection.js';
+import { config } from '../config/env.js';
 
 const router = express.Router();
 const SALT_ROUNDS = 10;
@@ -38,7 +39,7 @@ router.post('/signup', async (req, res) => {
 
     const token = jwt.sign(
       { id: newUser.id, username: newUser.username },
-      process.env.JWT_SECRET,
+      config.jwtSecret,
       { expiresIn: '7d' }
     );
 
@@ -81,7 +82,7 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, username: user.username },
-      process.env.JWT_SECRET,
+      config.jwtSecret,
       { expiresIn: '7d' }
     );
 

@@ -1,6 +1,7 @@
 // server/socket/socketHandler.js
 import jwt  from 'jsonwebtoken';
 import pool from '../db/connection.js';
+import { config } from '../config/env.js';
 
 export default function socketHandler(io) {
 
@@ -18,7 +19,7 @@ export default function socketHandler(io) {
     }
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, config.jwtSecret);
       socket.user = decoded; // shape: { id, username, iat, exp }
       next();
     } catch {
