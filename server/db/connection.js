@@ -1,10 +1,12 @@
 import pg      from 'pg';
 import dotenv  from 'dotenv';
 import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
+import { basename, dirname, resolve } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, '../../.env') });
+// The compiled build runs from server/dist/db/, one level deeper than the source.
+const rootEnv = basename(dirname(__dirname)) === 'dist' ? '../../../.env' : '../../.env';
+dotenv.config({ path: resolve(__dirname, rootEnv) });
 
 const { Pool } = pg;
 

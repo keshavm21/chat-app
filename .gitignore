@@ -6,13 +6,9 @@ node_modules/
 client/node_modules/
 server/node_modules/
 
-# Database backups/dumps — never commit
-backups/
-*.dump
-*.sql.gz
-
 # Build output
 client/dist/
+server/dist/
 
 # OS junk
 .DS_Store

@@ -6,8 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Relay: a single-room real-time group chat. Two independent npm projects, no root `package.json`:
 
-- `server/` — Express 5 + Socket.io 4 + `pg` (PostgreSQL), ESM (`"type": "module"`), plain JS
-- `client/` — React 19 + Vite + Tailwind v3 + React Router 7, plain JSX
+- `server/` — Express 5 + Socket.io 4 + `pg` (PostgreSQL), ESM (`"type": "module"`). Existing code is JS; TypeScript is set up incrementally (`allowJs`, `checkJs: false`, `strict`) so new files can be `.ts`. Do not convert existing JS files.
+- `client/` — React 19 + Vite + Tailwind v3 + React Router 7, JSX, with the same incremental TypeScript setup (`noEmit`; typecheck only)
 
 Deployed as server on Render, client on Vercel, DB on Neon.
 
@@ -16,13 +16,17 @@ Deployed as server on Render, client on Vercel, DB on Neon.
 ```bash
 # Server (run from server/)
 npm install
-npm run dev        # node --watch index.js
-npm start          # node index.js
+npm run dev        # tsx watch index.js
+npm run build      # tsc -p tsconfig.build.json → dist/
+npm start          # node dist/index.js (run build first)
+npm run typecheck  # tsc --noEmit
+npm run lint       # eslint . (typescript-eslint recommended)
 
 # Client (run from client/)
 npm install
 npm run dev        # Vite dev server on :5173
 npm run build
+npm run typecheck  # tsc --noEmit
 npm run lint       # eslint .
 npm run preview
 ```
@@ -31,7 +35,7 @@ There is no test suite in either project (server's `npm test` is a placeholder t
 
 ## Environment
 
-- Server env lives in a `.env` at the **repo root**, not in `server/`. Both `server/index.js` and `server/db/connection.js` load it via a path resolved relative to their own file location.
+- Server env lives in a `.env` at the **repo root**, not in `server/`. Both `server/index.js` and `server/db/connection.js` load it via a path resolved relative to their own file location, with an extra `..` when running from the compiled `server/dist/`. Keep both layouts working when touching that code.
 - Server vars: `DB_USER`, `DB_HOST`, `DB_NAME`, `DB_PASSWORD`, `DB_PORT` (local) or `DATABASE_URL` (production; takes precedence and enables SSL), plus `JWT_SECRET`, `PORT` (default 5001), `CLIENT_URL` (default `http://localhost:5173`, used for both Express and Socket.io CORS).
 - Client: `client/.env.local` with `VITE_API_URL=http://localhost:5001`. Note the fallbacks disagree: `client/src/socket.js` falls back to `:5001`, but `client/src/api/axios.js` falls back to `:5000` — always set `VITE_API_URL`.
 - No migrations exist; the `users` and `messages` table schema is in README.md ("Create the database"). `messages.username` is denormalized from `users` at insert time.
