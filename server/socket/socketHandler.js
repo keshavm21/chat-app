@@ -2,6 +2,7 @@
 import jwt  from 'jsonwebtoken';
 import { config } from '../config/env.js';
 import { withTransaction } from '../db/transaction.js';
+import { MESSAGE_MAX_LENGTH } from '../lib/limits.js';
 import { logger } from '../lib/logger.js';
 import { allocateSeq, findGeneralId, markRead } from '../repositories/conversations.js';
 import { createMessage } from '../repositories/messages.js';
@@ -49,6 +50,11 @@ export default function socketHandler(io) {
       if (typeof content !== 'string') return;
       const text = content.trim();
       if (!text) return; // empty messages are ignored
+      // Counted in characters (code points), as the database's char_length() does.
+      if ([...text].length > MESSAGE_MAX_LENGTH) {
+        socket.emit('error', { message: `Message is too long (maximum ${MESSAGE_MAX_LENGTH} characters).` });
+        return;
+      }
 
       try {
         // Everything goes to #general for now. allocateSeq() locks #general's row
