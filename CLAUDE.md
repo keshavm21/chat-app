@@ -39,7 +39,21 @@ npm run lint       # eslint .
 npm run preview
 ```
 
-There is no test suite in either project (server's `npm test` is a placeholder that exits 1).
+## Tests (server)
+
+```bash
+# needs `docker compose up -d --wait`; run from server/
+npm test                                   # vitest run: all integration tests against relay_test
+npm run test:watch
+npx vitest run test/socket.test.ts         # one file
+npx vitest run -t "rejects a duplicate"    # tests whose name matches
+```
+
+- Integration tests only (Vitest + Supertest + socket.io-client) against real Postgres; no DB mocking. The client has no tests yet.
+- `server/app.js` exports `createApp()` → `{ app, httpServer, io }` without listening; `index.js` only loads `.env`, checks the DB and listens. Tests start their own instance on port 0 via `test/helpers.ts`.
+- **Database guard** (`test/testDatabase.ts`): tests use `DATABASE_URL`, or the local `relay_test` URL if it is unset. The run is refused unless the database name ends in `_test` and the host is local; `vitest.config.ts` checks this before anything runs, `test/setup.ts` re-checks the pool's actual connection string, and the per-test `TRUNCATE users, messages RESTART IDENTITY CASCADE` refuses inside Postgres unless `current_database()` ends in `_test`. The root `.env`'s `DATABASE_URL` (relay_dev) is never used by tests.
+- `globalSetup` applies migrations to the test database; `fileParallelism: false` because all files share one database. Tests set `JWT_SECRET` themselves.
+- Socket tests wait for events (`nextEvent`) registered before the triggering emit — no sleeps/timeouts.
 
 ## Environment
 
