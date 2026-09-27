@@ -1,6 +1,6 @@
 # Relay — V2 Design
 
-**Status:** Approved. Decisions D1–D17 were approved on 2026-09-27 (see [§10](#10-decision-record)). D5 and D9 are **flexible implementation choices**, not hard requirements. One item remains open: how session cookies will work in production while the custom domain is deferred ([§6](#6-security-model)).
+**Status:** Approved. Decisions D1–D17 were approved on 2026-09-27 (see [§10](#10-decision-record)). D6 was revised the same day: existing data is not preserved, and V2 starts with a fresh database. D5 and D9 are **flexible implementation choices**, not hard requirements. One item remains open: how session cookies will work in production while the custom domain is deferred ([§6](#6-security-model)).
 
 **Based on:** `docs/current-state-audit.md` (repository at commit `2e72c1d`).
 
@@ -46,8 +46,9 @@ V2 needs **no new infrastructure**: no Redis, no queue, no object storage, no se
 
 This is an evolution of the existing app, not a rewrite:
 
-- **Kept:** the stack (Express 5, Socket.io 4, pg, React 19, Vite, Tailwind), the current hosting providers (Render, Vercel, Neon; plan decisions deferred, D13), all existing users and messages and their bcrypt password hashes (D6), parameterized SQL, the save-then-broadcast pattern, handshake authentication, and the landing, login and signup pages with their visual design.
-- **Rebuilt in place:** the schema (through migrations), the socket handler, the message routes and `Chat.jsx`. The audit shows these layers all assume a single room, so they have to change.
+- **Kept:** the stack (Express 5, Socket.io 4, pg, React 19, Vite, Tailwind), the current hosting providers (Render, Vercel, Neon; plan decisions deferred, D13), parameterized SQL, the save-then-broadcast pattern, handshake authentication, and the landing, login and signup pages with their visual design.
+- **Designed fresh:** the database schema. Existing data is not preserved, so the schema follows §4 with no legacy constraints (D6).
+- **Rebuilt in place:** the socket handler, the message routes and `Chat.jsx`. The audit shows these layers all assume a single room, so they have to change.
 
 ---
 
@@ -64,7 +65,7 @@ This is an evolution of the existing app, not a rewrite:
 | 7 | **Revocable identity; username removed from tokens and messages** | 7-day irrevocable JWT in `localStorage`; username in the JWT and copied into every message (§7.3, §8.3, §8.6) | Profiles, "log out everywhere", and cutting off live sockets |
 | 8 | **Explicit, typed client–server contract** | Untyped, unversioned events; client and server deploy separately (§8.2, §11) | Many new events, and old tabs will talk to new servers |
 | 9 | **Routed, conversation-scoped client** | 457-line `Chat.jsx` owns everything in local `useState` (§2) | Sidebar, per-conversation state, unread state, reconciliation |
-| 10 | **Engineering substrate** | No migrations, tests, CI, server lint, env validation or error handler (§5, §6) | Changing a live schema is unsafe without migrations; sync logic cannot be verified without integration tests |
+| 10 | **Engineering substrate** | No migrations, tests, CI, server lint, env validation or error handler (§5, §6) | Every environment needs the same schema, built reproducibly by migrations; sync logic cannot be verified without integration tests |
 
 ---
 
@@ -129,7 +130,7 @@ This is an evolution of the existing app, not a rewrite:
 1. **Delivery guarantees:** per-conversation ordering, idempotent sends, deduplication, and catch-up after reconnects. Correctness holds through reconnects, multiple tabs, server restarts and the initial page load.
 2. **Uniform authorization:** one policy module governs REST reads, REST writes and socket delivery. Removed members stop receiving messages immediately.
 3. **Revocable sessions:** logging out cuts off live sockets as well as HTTP requests.
-4. **Deliberate data design:** constraints, keyset pagination, counter-based unread counts, concurrency-safe DM creation, and a migration that preserves all existing data.
+4. **Deliberate data design:** constraints, keyset pagination, counter-based unread counts, concurrency-safe DM creation, and a schema defined entirely by versioned migrations.
 5. **A verified system:** migrations, integration tests against real Postgres and real sockets, E2E tests of reconnect behavior, and CI gating deploys.
 
 **Explicitly out of scope:** workspaces or multi-tenancy, ad hoc group DMs, threads, voice and video, push or email notifications, email verification and password reset (no email provider), OAuth, global moderation and reporting, attachments and avatars (deferred, D12), end-to-end encryption, bots and integrations, AI features, native mobile apps, account deletion, and running multiple server instances (the scaling path is documented in §8, D16).
@@ -138,7 +139,7 @@ This is an evolution of the existing app, not a rewrite:
 
 ## 2. Feature scope
 
-- **Core (V2):** accounts with minimal profiles, revocable sessions, public channels, private channels, 1:1 DMs, per-channel roles and moderation, messaging with keyset pagination, idempotent sends with retry, reconnect catch-up, message editing, soft delete, unread counts with cross-tab read state, typing, presence, basic rate limiting, input validation, and migration of all existing users and messages.
+- **Core (V2):** accounts with minimal profiles, revocable sessions, public channels, private channels, 1:1 DMs, per-channel roles and moderation, messaging with keyset pagination, idempotent sends with retry, reconnect catch-up, message editing, soft delete, unread counts with cross-tab read state, typing, presence, basic rate limiting, and input validation.
 - **Later (after the V2 core, D11):** Postgres full-text search; session management UI (list and revoke other sessions).
 - **Optional (not planned):** reactions, quote-replies, DM "Seen" receipts, browser notifications while the tab is open, seeded demo data (D15).
 - **Deferred (D12):** avatars and attachments. Initials are shown instead of avatars.
@@ -227,7 +228,7 @@ Routes and socket handlers stay thin. Everything with a rule in it lives in serv
 
 ## 4. Target database model
 
-All timestamps are `timestamptz`. IDs are integers (D10): existing `SERIAL` columns are already `integer` and are kept, and new tables use `integer GENERATED ALWAYS AS IDENTITY`. Note that `pg` returns `bigint` as a JavaScript string, so int4 avoids that trap at this scale.
+All timestamps are `timestamptz`. IDs are integers (D10): every table uses `integer GENERATED ALWAYS AS IDENTITY`. Note that `pg` returns `bigint` as a JavaScript string, so int4 avoids that trap at this scale.
 
 | Table | Columns and constraints |
 |---|---|
@@ -236,7 +237,7 @@ All timestamps are `timestamptz`. IDs are integers (D10): existing `SERIAL` colu
 | `conversations` | `id` PK; `type` CHECK in (`channel`, `dm`); `visibility` CHECK in (`public`, `private`); `name` CHECK `^[a-z0-9-]{1,40}$`; `topic`; `created_by` FK → users ON DELETE SET NULL; `last_seq int NOT NULL DEFAULT 0`; `last_rev int NOT NULL DEFAULT 0` (full D5 model only); `last_message_at`; `created_at`, `updated_at`. A table-level CHECK requires channels to have `name` and `visibility`, and DMs to have neither |
 | `direct_conversations` | `conversation_id` PK/FK → conversations ON DELETE CASCADE; `user_a_id`, `user_b_id` FK → users; CHECK `user_a_id < user_b_id` (also blocks self-DMs); UNIQUE (`user_a_id`, `user_b_id`) |
 | `conversation_members` | PK (`conversation_id`, `user_id`), both FKs ON DELETE CASCADE; `role` CHECK in (`owner`, `admin`, `member`); `last_read_seq int NOT NULL DEFAULT 0`; `joined_at` |
-| `messages` | `id` PK; `conversation_id` FK ON DELETE CASCADE; `seq`; `rev` (full D5 model only); `author_id` FK → users ON DELETE RESTRICT; `client_id uuid` (NULL for migrated legacy messages); `content`; `created_at`; `edited_at`; `deleted_at`. UNIQUE (`conversation_id`, `seq`); UNIQUE (`author_id`, `client_id`); CHECK `deleted_at IS NOT NULL OR char_length(content) BETWEEN 1 AND 4000` (added `NOT VALID` if legacy rows violate it; see the migration below) |
+| `messages` | `id` PK; `conversation_id` FK ON DELETE CASCADE; `seq`; `rev` (full D5 model only); `author_id` FK → users ON DELETE RESTRICT; `client_id uuid NOT NULL`; `content`; `created_at`; `edited_at`; `deleted_at`. UNIQUE (`conversation_id`, `seq`); UNIQUE (`author_id`, `client_id`); CHECK `deleted_at IS NOT NULL OR char_length(content) BETWEEN 1 AND 4000` |
 
 **Indexes:**
 
@@ -261,70 +262,31 @@ All timestamps are `timestamptz`. IDs are integers (D10): existing `SERIAL` colu
 2. **Two counters, `seq` and `rev`.**
    - `seq` is a message's permanent position, used for ordering, pagination and unread counts.
    - `rev` increments on every create, edit or delete. It lets clients fetch "everything that changed since X". That matters because edits and deletions must reach clients that were offline when they happened.
-   - `rev` belongs to the full model only. It is added in Phase 5, backfilled from `seq`, and skipped if a simpler mechanism is chosen.
+   - `rev` belongs to the full model only. It is added in Phase 5 (initialized from `seq` for existing rows) and skipped if a simpler mechanism is chosen.
 3. **One `conversations` table with a type discriminator,** plus a DM side table. Messages, members, rooms and read state all work the same way for every conversation type. DM-only rules (exactly two members, uniqueness) live in `direct_conversations`, where the unique pair constraint resolves concurrent "start DM" requests with `INSERT … ON CONFLICT`.
 4. **Soft delete that erases content.** The row stays, which keeps `seq` gapless and keeps the history intact. The content is cleared, which honors the user's intent and is what "delete" should mean for privacy.
 5. **Denormalization.**
-   - The username copy is removed from `messages`. Author details come from a join on the primary key.
+   - `messages` stores no copy of the username. Author details come from a join on the primary key.
    - `last_seq` and `last_message_at` are the one intentional denormalization. They power sidebar sorting and unread counts without aggregate queries, and are updated in the same transaction as the insert.
 6. **Case-insensitivity by normalization plus CHECK constraints,** rather than the `citext` extension. This is simpler and explicit. The constraint guarantees nothing unnormalized gets in.
 7. **Constraints mirror the server-side validation limits,** so the database stays consistent even if application code has a bug.
 
-### Existing-data migration (D6)
+### Starting from a fresh database (D6)
 
-**Requirement:** every existing user and message is preserved, and the current global chat becomes a public channel named `#general` in the new conversation model.
+Existing production users and messages are not preserved. The V2 schema is built from scratch by migrations, with no backfill and no legacy-compatibility constraints.
 
-**Pre-flight checks** (read-only, against production or a fresh copy of it):
-
-1. Capture the actual schema with `pg_dump --schema-only`. The README schema is not trusted (audit §12).
-2. Run `SHOW timezone`. It is needed to convert `TIMESTAMP` values correctly.
-3. Count rows in `users` and `messages`.
-4. Find emails that collide when lowercased.
-5. Find usernames that collide when lowercased, or that fail the new format `^[a-z0-9_]{3,32}$`.
-6. Find messages with empty content or content over 4000 characters. Today there is no server-side limit (audit §5).
-7. Find messages whose `user_id` has no matching user, if the production schema allows that.
-
-**Mapping from the current schema:**
-
-| Current | V2 |
-|---|---|
-| The single global chat | One `conversations` row: `type = 'channel'`, `visibility = 'public'`, `name = 'general'` |
-| Each user | Kept with the same `id`, password hash and `created_at`. `email` is lowercased. `display_name` is set to the current username, which already fits the 50-character limit. `username` becomes the normalized form |
-| Membership | Every existing user becomes a `member` of `#general`, with `last_read_seq` set to the channel's latest `seq` so that old history does not show as unread. The maintainer's account, identified when the migration runs, becomes `owner` |
-| Each message | Kept with the same `id`, author and content. `conversation_id` is `#general`, `seq` is `row_number()` ordered by `(created_at, id)`, and `client_id` is NULL. NULLs do not conflict in the unique index |
-| `messages.username` | Kept during the transition and dropped in the contract step (Phase 4) |
-| `TIMESTAMP` columns | Converted to `timestamptz` using the verified session time zone |
-
-**Conflict rules:**
-
-- **Emails that collide when lowercased:** the migration stops. Accounts cannot be merged automatically, so the rows are resolved by hand first. This is expected to be rare or absent.
-- **Usernames that fail the new format or collide:** lowercase, replace disallowed characters with `_`, pad or truncate to the 3–32 range, and add a numeric suffix on collision. The original stays visible as `display_name`, and login uses email, so nobody is locked out. The migration prints the list of changed usernames.
-- **Content that is empty or over 4000 characters:** the content CHECK is added `NOT VALID`, so it applies to new and updated rows while legacy rows are kept unchanged.
-
-**Migration sequence (expand, then contract):**
-
-1. **Baseline:** the captured production schema, recorded as already applied in production.
-2. **Expand `users`:** add `display_name` and `updated_at`, normalize emails and usernames, add the constraints.
-3. **New tables:** create `conversations`, `direct_conversations` and `conversation_members`, then insert `#general` and the memberships.
-4. **Expand `messages`:** add nullable `conversation_id`, `seq`, `client_id`, `edited_at` and `deleted_at`. Backfill them, set `conversations.last_seq` and `last_message_at`, then add `NOT NULL`, the foreign key and the unique constraints.
-5. **Timestamps:** convert to `timestamptz`.
-6. **Later phases:** Phase 2 adds `sessions`. Phase 5 adds `rev` and `last_rev`, backfilled from `seq`, if the full D5 model is used.
-7. **Contract (Phase 4):** drop `messages.username` once no deployed code reads it.
-
-**Keeping the old app working in between:** until Phase 4 replaces it, the single-room code is updated in Phase 1 to write data that satisfies the new schema. Messages go to `#general` with a `seq`, signup applies the new username and email rules, and new users are added to `#general`.
-
-**Safety:**
-
-- Take a `pg_dump` backup immediately before running against production.
-- Rehearse first on a copy of production data, either a restored dump or a Neon branch.
-- Verify afterwards:
-  - row counts are unchanged;
-  - every message has a `conversation_id`;
-  - `seq` runs from 1 to N without gaps in `#general`, and `last_seq` equals the highest `seq`;
-  - every user is a member of `#general`.
-- Roll back structural steps with down migrations. Data transformations (username normalization, time zone conversion) are rolled back by restoring the backup.
-
-**Sessions:** existing JWTs stop working when server-side sessions replace them (Phase 2), so every user logs in once more. Passwords are unchanged.
+- **Phase 0** adds an initial migration that reproduces the current `users` and `messages` tables. It exists only so the existing single-room code and the Phase 0 tests have a schema to run against.
+- **Phase 1** replaces those tables with the V2 schema above.
+  - The old tables are dropped, not migrated. No database holds data that must be kept.
+  - Local databases can be reset at any time.
+- **Keeping the single-room app working until Phase 4:**
+  - Phase 1 seeds one public channel, `#general`.
+  - The single-room code is updated to read and write `#general`, assigning `seq` and a server-generated `client_id`, joining `users` for author names, and adding new users as members.
+  - Signup applies the new username and email rules.
+- **First production deploy of the V2 schema:**
+  - Point the server at a fresh, empty database, either a new Neon database or the existing one reset, and run the migrations.
+  - Rotate `JWT_SECRET` at the same time. User IDs restart at 1, so a token issued against the old database could otherwise match a different new user.
+  - No backup is needed, and the old database can be deleted afterwards.
 
 ---
 
@@ -544,7 +506,6 @@ Express must set `trust proxy` to Render's actual proxy depth. Otherwise the cli
    - Socket.io `maxHttpBufferSize` around 8 KB. This is safe because clients only send typing events over the socket, which is another benefit of REST writes.
 2. **Passwords:**
    - Enforced server-side: at least 8 characters and at most 72 bytes (bcrypt's limit), rejected rather than silently truncated.
-   - Existing bcrypt hashes keep working.
    - Login compares against a dummy hash when the email is unknown, so response timing does not reveal registered emails (fixes audit §7.4).
 3. **Enumeration:**
    - Usernames are public by design.
@@ -570,7 +531,7 @@ Express must set `trust proxy` to Render's actual proxy depth. Otherwise the cli
 | Unit | Vitest | Policy rules, validation schemas, and the client reducer functions (merge, dedupe, pending reconciliation; gap detection in the full D5 model) |
 | API integration | Vitest + supertest against real Postgres | Every endpoint; the **full authorization matrix**; error envelope; rate limits |
 | Database behavior | Same | Concurrent sends to one conversation produce gapless `seq` (if counters are used); concurrent DM creation yields one conversation; idempotent retry; constraints reject bad data |
-| Migration | Same | Migrations run cleanly from an empty database and from a fixture of the old schema with edge-case data (mixed-case duplicate emails, invalid usernames, over-length content); verification queries from §4 pass |
+| Migration | Same | Migrations apply cleanly to an empty database, which is how every test run starts |
 | Socket integration | Server on an ephemeral port + `socket.io-client` | Non-members receive nothing; removed members stop receiving immediately; revoked sessions are disconnected; bad Origin rejected; typing relay and throttle; outdated protocol rejected |
 | Component | React Testing Library, only if component tests prove worthwhile (D17) | Composer failure and retry states, unread badges |
 | E2E | Playwright, about 6–8 flows | Two browser contexts exchanging messages; going offline and back online, then catching up; failed send and retry; editing and deleting while another client is offline; removal from a private channel; logout in one tab |
@@ -592,7 +553,7 @@ Coverage goals are about behavior (every policy rule and every sync path), not a
 - Plain SQL migration files under version control, applied in order by a runner that records which files have run and takes an advisory lock. The runner is either a small script or a lightweight tool; the choice is made in the Phase 0 plan (D17).
 - Queries stay hand-written SQL in repositories. No ORM or query builder.
 - Run migrations over Neon's **direct (unpooled) connection.** The pooler's transaction mode does not reliably support session-level advisory locks; verify this for the Neon setup in use.
-- Rule: **expand, then contract.** Every migration must work with both the currently deployed server and the new one, because the two overlap during deploys and old tabs stay open.
+- Rule: **expand, then contract.** Every migration must work with both the currently deployed server and the new one, because the two overlap during deploys and old tabs stay open. The one exception is Phase 1, which moves to a fresh database instead of migrating the old one (§4).
 
 **Reliability basics:**
 
@@ -665,24 +626,26 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Goal:** a safe base for change.
 - **Changes:**
   - TypeScript tooling in `client` and `server` (separate `tsconfig` files, `allowJs`); ESLint and Prettier on the server.
-  - Vitest, supertest, Docker Compose Postgres, the SQL migration runner, and a baseline migration taken from `pg_dump` of production.
+  - Vitest, supertest, Docker Compose Postgres, the SQL migration runner, and an initial migration that reproduces the current schema (§4, "Starting from a fresh database").
   - CI.
   - Env validation, pool error handler, error envelope (with the matching client fix), global error handler, 404 handler, graceful shutdown, pino, health checks.
   - Remove dead files and fix the README.
   - Fix audit §4 items 1, 2, 6, 7, 8 and 9. Items 3–5 are fixed structurally in Phases 4–5 rather than patched twice.
-- **Dependencies:** production schema captured.
+  - The detailed, authoritative scope is `docs/phase-0-implementation-plan.md`.
+- **Dependencies:** none.
 - **Tests:** characterization tests of the current auth, messages and socket behavior.
 - **Done when:** CI is green on every PR, current behavior is covered by tests, and the fixes are deployed.
 
-### Phase 1 — Data model and existing-data migration (D6)
+### Phase 1 — Data model (fresh database, D6)
 
-- **Goal:** the V2 schema, reached with every existing user and message preserved.
+- **Goal:** the V2 schema, built from scratch.
 - **Changes:**
-  - Migrations 1–5 from §4: users normalization, `conversations`, `direct_conversations`, `conversation_members`, the `#general` channel and memberships, message columns including `seq`, and `timestamptz`.
-  - The single-room code is updated to write through the new model (§4), so users see no change.
-- **Dependencies:** Phase 0; the pre-flight checks in §4; D10.
-- **Tests:** migration tests from an empty database and from the old-schema fixture; constraint tests; a rehearsal on a copy of production with the verification queries.
-- **Done when:** production (or a copy, if production is not live) is migrated, verification passes, and users see no behavior change. If the minimal D5 level is chosen later, `seq` is dropped in a contract migration.
+  - Migrations that drop the Phase 0 tables and create the V2 tables from §4: `users`, `conversations`, `direct_conversations`, `conversation_members` and `messages` (with `seq`). `sessions` follows in Phase 2.
+  - Seed the `#general` channel. The single-room code is updated to use the new tables (§4), so the app keeps working.
+  - If deployed: a fresh production database and a rotated `JWT_SECRET` (§4).
+- **Dependencies:** Phase 0; D10.
+- **Tests:** migrations apply to an empty database; constraint tests (username and email format, content length, the DM pair rule, the channel/DM shape check); the Phase 0 tests updated to the new schema.
+- **Done when:** local and CI databases are built by the new migrations, the single-room app works on the V2 schema, and every constraint is covered by a test. If the minimal D5 level is chosen later, `seq` is dropped in a later migration.
 
 ### Phase 2 — Sessions and security baseline
 
@@ -694,7 +657,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
   - Client: remove `localStorage` token handling, add the 401 interceptor.
 - **Dependencies:** Phase 1. **The production cookie topology (§6) must be chosen before this phase is deployed to production.**
 - **Tests:** auth API and CSRF tests; socket rejects missing or revoked sessions; logout disconnects the session's sockets.
-- **Done when:** no token is readable by JavaScript and logout cuts off live sockets. After deployment, every user logs in once more (§4).
+- **Done when:** no token is readable by JavaScript and logout cuts off live sockets.
 
 ### Phase 3 — Conversations and authorization (vertical slice)
 
@@ -715,7 +678,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
   - Send endpoint with the counter transaction and `clientId` idempotency.
   - Keyset pagination; `message:created` to rooms.
   - Client: `Chat.jsx` decomposed, reducer-based timeline state, pending/confirmed/failed states, retry, load-older.
-  - Remove the single-room API and events (the contract step), then drop `messages.username`.
+  - Remove the single-room API and events.
 - **Dependencies:** Phase 3.
 - **Tests:** parallel sends produce gapless `seq`; retry does not duplicate; removed members stop receiving; pagination edges.
 - **Done when:** audit issues §4.3 and §4.5 cannot be reproduced.
@@ -776,10 +739,10 @@ All decisions were approved on 2026-09-27.
 |---|---|---|---|
 | D1 | Conversation types | Public channels, private channels and 1:1 DMs | No ad hoc group DMs (§1, B) |
 | D2 | Write path | REST writes + Socket.IO push | `typing` is the only client-to-server event (§5) |
-| D3 | Auth model | Server-side sessions with secure httpOnly cookies | JWT removed; one-time re-login (§4, §6) |
+| D3 | Auth model | Server-side sessions with secure httpOnly cookies | JWT removed (§6) |
 | D4 | Custom domain | Deferred | Production cookie topology is an open item (§6) |
 | D5 | Ordering and sync | **Flexible.** Per-conversation `seq`/`rev` if practical | The guarantees in §5 are required; the mechanism may be simplified or skipped |
-| D6 | Existing data | Preserve all users and messages; the global chat becomes `#general` | Migration plan (§4), Phase 1 |
+| D6 | Existing data | Not preserved; V2 starts with a fresh database (revised 2026-09-27) | Fresh-database approach (§4), Phase 1 |
 | D7 | TypeScript | Incremental; no shared package initially | Contract types on each side (§3, §7) |
 | D8 | Data access and migrations | SQL-first migrations and raw SQL | No ORM or query builder; runner chosen in Phase 0 (§7) |
 | D9 | Client state | **Flexible.** Simple React state and context first | TanStack Query or Zustand only if justified (§3) |
@@ -843,6 +806,5 @@ All decisions were approved on 2026-09-27.
 
 ## Next steps
 
-1. **Gather production facts and run the pre-flight checks in §4.** These block Phase 1. Also note which Render plan is in use and whether production uses Neon's pooled or direct connection string.
-2. **Write the detailed Phase 0 plan,** with acceptance criteria and a file-by-file change list, and short ADRs for the approved decisions, before any code is written.
-3. **Choose the production cookie topology (§6)** before Phase 2 is deployed to production.
+1. **Implement Phase 0** following `docs/phase-0-implementation-plan.md`.
+2. **Choose the production cookie topology (§6)** before Phase 2 is deployed to production.

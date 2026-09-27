@@ -1,6 +1,6 @@
 # Relay — Phase 0 Implementation Plan
 
-**Status:** Approved (lean Phase 0).
+**Status:** Approved (lean Phase 0). Revised 2026-09-27 after D6 changed: existing data is not preserved, and V2 starts with a fresh database. The production backup and production fact-gathering tasks were removed.
 **Scope source:** the approved lean Phase 0 plan. Background: `docs/current-state-audit.md`, `docs/v2-design.md`.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
 
@@ -10,8 +10,7 @@
 
 Build the minimum foundation needed to start Phase 1 (the V2 data model) safely:
 
-- a production backup and a record of production facts;
-- a migration runner with a baseline migration;
+- a local Postgres with dev and test databases, built entirely by a migration runner;
 - incremental TypeScript on the server;
 - a small set of backend tests running against real Postgres;
 - one CI workflow;
@@ -19,122 +18,27 @@ Build the minimum foundation needed to start Phase 1 (the V2 data model) safely:
 - fixes for the approved audit bugs;
 - an accurate README.
 
-Phase 0 does not implement any V2 features, change the schema, or change socket events or authentication.
+Phase 0 does not implement any V2 features, design the V2 schema, or change socket events or authentication. The existing codebase is the starting point. The V2 schema is designed from scratch in Phase 1, following `docs/v2-design.md` §4.
 
-**Implementation order** (this differs from the section order):
-
-1. Tasks 1–2
-2. Tasks 4, 12 and 6 (CI without tests)
-3. Task 3
-4. Task 5 (and add the test step to CI)
-5. Tasks 7–11
-6. Task 13
+Tasks are numbered in implementation order.
 
 ---
 
 ## 2. Prerequisites / safety checks
 
-- [ ] **Production is read-only in Phase 0.** The only production-side change is the Render build/start command (Task 4). Marking production's baseline happens at the start of Phase 1, not now.
-- [ ] **The developer runs production commands** (Tasks 1–2 and the Render settings change). Claude Code may prepare the commands and queries, but does not connect to production without explicit approval each time.
-- [ ] Add `backups/`, `*.dump` and `*.sql.gz` to `.gitignore` **before** creating any dump. Never commit dumps or `.env` files.
-- [ ] Tools are installed locally: Docker, and the `pg_dump`/`pg_restore`/`psql` client at the **same major version or newer** than production's server.
+- [ ] **Production is not touched in Phase 0,** except for the Render build/start command change in Task 1.
+  - The production database is left as it is.
+  - Its data is not preserved (D6). V2 runs on a fresh database, provisioned when Phase 1 is first deployed (see §15).
+- [ ] **The developer makes every production-side change** (the Render settings). Claude Code does not connect to production.
+- [ ] Tools are installed locally: Docker, and the Node version chosen in Task 3. `psql` is optional, for inspecting local databases.
 - [ ] Tests only ever target a database whose name ends in `_test`.
-- [ ] Do not convert existing JS files to TS. Do not touch socket events, JWT handling or the schema. D5 and D9 are not exercised in Phase 0.
+- [ ] Do not convert existing JS files to TS. Do not touch socket events, JWT handling or the schema; Task 4's initial migration reproduces the current schema without changing it. D5 and D9 are not exercised in Phase 0.
+- [ ] Never commit `.env` files.
 - [ ] One task per commit or PR. Run lint, typecheck and tests before each commit, once they exist.
 
 ---
 
-## 3. Task 1 — Production backup
-
-**Objective:** a restorable full backup of production before anything else happens.
-
-**Files likely to change:** `.gitignore` (the backup file itself stays outside git).
-
-**Implementation steps**
-1. Get the production connection string from Render's environment settings. Use Neon's direct connection if available.
-2. Run `pg_dump` with the custom format (`-Fc`) to `backups/relay-prod-<date>.dump`.
-3. Record the dump date and the `pg_dump` version used, for `docs/production-facts.md` (Task 2).
-
-**Tests/verification**
-- `pg_restore --list` on the file succeeds and lists the `users` and `messages` data.
-- `git status` does not show the dump.
-
-**Definition of done**
-- [ ] A dump file exists locally, is readable by `pg_restore`, and is ignored by git.
-
----
-
-## 4. Task 2 — Production facts
-
-**Objective:** record the facts Phase 1's migration depends on, with no PII.
-
-**Files likely to change:** `docs/production-facts.md` (new).
-
-**Implementation steps**
-
-Run everything in a read-only session (`SET default_transaction_read_only = on`). Record the results in `docs/production-facts.md`:
-
-1. `pg_dump --schema-only` → save to `backups/relay-prod-schema-<date>.sql`.
-2. `SHOW server_version` and `SHOW timezone`.
-3. Row counts for `users` and `messages`.
-4. Number of emails that collide after `lower()`.
-5. Number of usernames that collide after `lower()`.
-6. Number of usernames failing `^[a-z0-9_]{3,32}$` after `lower()`.
-7. Number of messages with empty (trimmed) content, and number longer than 4000 characters.
-8. Differences between the actual schema and the schema in `README.md`: column types, indexes, constraints.
-9. Whether production uses `DATABASE_URL` or `DB_*`, and whether the URL is Neon's pooled connection (`-pooler` in the host) or the direct one.
-10. Render's Node version, its build and start commands, and its root directory.
-
-**Tests/verification**
-- The facts file contains counts and settings only: no emails, usernames or message text.
-
-**Definition of done**
-- [ ] `docs/production-facts.md` answers items 1–10.
-- [ ] Any Phase 1 blockers (collisions, invalid usernames, content outside 1–4000 characters) are listed explicitly.
-
----
-
-## 5. Task 3 — Local Postgres + migrations
-
-**Objective:** versioned migrations with a baseline that matches production, plus two local databases.
-
-**Files likely to change**
-- `docker-compose.yml` (new, at the repo root)
-- `server/package.json`
-- `server/migrations/` (new)
-- `.env.example` or the README env section
-- `.gitignore`
-
-**Implementation steps**
-1. Add `docker-compose.yml` with one Postgres service at production's major version (Task 2) and a named volume.
-2. Create two databases: `relay_dev` and `relay_test`.
-3. Add `node-pg-migrate` as a server dev dependency.
-4. Add scripts: `migrate` (up), `migrate:down` and `migrate:create`. Migrations read the database URL from the environment.
-5. **Verify** in the installed node-pg-migrate version:
-   - whether it supports SQL-file migrations; if not, use its JS format with raw SQL via `pgm.sql()`;
-   - how to mark a migration as applied without running it; if there is no option, document a single `INSERT` into its tracking table.
-6. Create `0001_baseline` from the production schema dump. Strip owner, ACL and `SET` noise; keep tables, sequences, constraints and indexes exactly as they are.
-7. Check the baseline once by hand:
-   1. Apply it to an empty scratch database.
-   2. Run `pg_dump --schema-only` on that database.
-   3. `diff` the result against the production schema dump. Resolve every difference that is not cosmetic.
-8. Restore the full production dump into `relay_dev` with `pg_restore --no-owner --no-acl`.
-9. Mark `0001_baseline` as applied in `relay_dev` using the method from step 5. This rehearses the procedure that will be used on production in Phase 1.
-10. Run `npm run migrate` against `relay_test` to apply the baseline from scratch.
-
-**Tests/verification**
-- `npm run migrate` against `relay_dev` reports nothing to run.
-- `relay_dev` row counts match `docs/production-facts.md`.
-- `relay_test` has the same tables as production and is empty.
-
-**Definition of done**
-- [ ] `docker compose up` followed by `npm run migrate` works from scratch.
-- [ ] The baseline matches the production schema.
-- [ ] `relay_dev` holds the restored production data and is marked as baselined.
-
----
-
-## 6. Task 4 — TypeScript + ESLint
+## 3. Task 1 — TypeScript + ESLint
 
 **Objective:** new server code can be written in strict TypeScript without converting existing JS, and the server has a lint configuration.
 
@@ -171,6 +75,86 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
 
 ---
 
+## 4. Task 2 — Client lint fix
+
+**Objective:** `npm run lint` passes in `client/` (fixes audit §4.9).
+
+**Files likely to change**
+- `client/src/context/AuthContext.jsx`
+- `client/src/context/useAuth.js` (new)
+- the client files that import the hook
+
+**Implementation steps**
+1. Move the non-component export flagged at `AuthContext.jsx:41` into `useAuth.js`.
+2. Update imports. Behavior stays the same.
+
+**Tests/verification**
+- `npm run lint` passes.
+- Manually: signup, login, logout and the protected route still work.
+
+**Definition of done**
+- [ ] Client lint is clean with no rule disabled.
+
+---
+
+## 5. Task 3 — CI
+
+**Objective:** one GitHub Actions job that runs lint, typecheck, tests and build on every PR and every push to `main`.
+
+**Files likely to change:** `.github/workflows/ci.yml` (new).
+
+**Implementation steps**
+1. Choose one Node major version: the one used locally. Use it in CI, and confirm Render uses the same one when making the Task 1 settings change.
+2. Client: `npm ci`, `lint`, `typecheck`, `build`.
+3. Server: `npm ci`, `lint`, `typecheck`, `build`.
+4. When Task 5 lands, add:
+   - a Postgres service container at the version pinned in Task 4;
+   - a server `npm test` step, with `DATABASE_URL` pointing at `relay_test`.
+5. CI runs no deploys and needs no production secrets.
+
+**Tests/verification**
+- A PR shows a green run.
+- A branch with a deliberately failing test shows a red run. Delete the branch afterwards.
+
+**Definition of done**
+- [ ] CI runs all four checks for both projects and is green on `main`.
+
+---
+
+## 6. Task 4 — Local Postgres + migrations
+
+**Objective:** versioned migrations, and two local databases built from them from scratch.
+
+**Files likely to change**
+- `docker-compose.yml` (new, at the repo root)
+- `server/package.json`
+- `server/migrations/` (new)
+- `.env.example` or the README env section
+
+**Implementation steps**
+1. Add `docker-compose.yml` with one Postgres service and a named volume.
+   - Pin one Postgres major version (default: 17).
+   - Use the same version in CI, and for the fresh production database when it is created.
+2. Create two databases: `relay_dev` and `relay_test`.
+3. Add `node-pg-migrate` as a server dev dependency.
+4. Add scripts: `migrate` (up), `migrate:down` and `migrate:create`. Migrations read the database URL from the environment.
+5. **Verify** whether the installed node-pg-migrate version supports SQL-file migrations. If it does not, use its JS format with raw SQL via `pgm.sql()`.
+6. Create `0001_initial`, which reproduces the current `users` and `messages` tables as defined in `README.md` ("Create the database") and used by the current code.
+   - Do not improve this schema.
+   - Phase 1 replaces these tables with the V2 schema.
+7. Run `npm run migrate` against `relay_dev` and `relay_test`.
+
+**Tests/verification**
+- `npm run migrate` creates both tables in each database. A second run reports nothing to run.
+- `npm run migrate:down` followed by `npm run migrate` succeeds.
+- The app runs locally against `relay_dev`: signup, login and sending a message all work.
+
+**Definition of done**
+- [ ] `docker compose up` followed by `npm run migrate` works from scratch.
+- [ ] `relay_dev` and `relay_test` are created only by migrations.
+
+---
+
 ## 7. Task 5 — Test harness
 
 **Objective:** backend integration tests against `relay_test`, covering the behavior that V2 relies on.
@@ -202,7 +186,7 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
    - `GET /api/messages` without a token returns 401, and with a token returns the current shape and order;
    - the socket handshake rejects a missing or invalid token;
    - `new_message` is stored and another connected client receives `message` with the REST shape.
-8. Add `test` and `test:watch` scripts.
+8. Add `test` and `test:watch` scripts, and add the test step to CI (Task 3, step 4).
 
 **Tests/verification**
 - `npm test` passes locally, and passes twice in a row.
@@ -210,34 +194,12 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
 
 **Definition of done**
 - [ ] The harness works for REST and sockets.
-- [ ] The tests above pass.
+- [ ] The tests above pass locally and in CI.
 - [ ] The app factory split causes no behavior change.
 
 ---
 
-## 8. Task 6 — CI
-
-**Objective:** one GitHub Actions job that runs lint, typecheck, tests and build on every PR and every push to `main`.
-
-**Files likely to change:** `.github/workflows/ci.yml` (new).
-
-**Implementation steps**
-1. Set up Node at the version Render uses (from Task 2).
-2. Client: `npm ci`, `lint`, `typecheck`, `build`.
-3. Server: `npm ci`, `lint`, `typecheck`, `build`.
-4. When Task 5 lands, add a Postgres service container at production's major version and a server `npm test` step using `DATABASE_URL` pointing at `relay_test`.
-5. CI runs no deploys and needs no production secrets.
-
-**Tests/verification**
-- A PR shows a green run.
-- A branch with a deliberately failing test shows a red run. Delete the branch afterwards.
-
-**Definition of done**
-- [ ] CI runs all four checks for both projects and is green on `main`.
-
----
-
-## 9. Task 7 — Environment validation
+## 8. Task 6 — Environment validation
 
 **Objective:** the server refuses to start with missing or invalid config, and `process.env` is read in exactly one place.
 
@@ -272,7 +234,7 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
 
 ---
 
-## 10. Task 8 — Error handling
+## 9. Task 7 — Error handling
 
 **Objective:** all REST errors use `{ error: { code, message, details? } }`, and the client shows server error messages (fixes audit §4.1).
 
@@ -309,7 +271,7 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
 
 ---
 
-## 11. Task 9 — Logging
+## 10. Task 8 — Logging
 
 **Objective:** structured logs with no secrets, using default pino settings.
 
@@ -335,7 +297,7 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
 
 ---
 
-## 12. Task 10 — Graceful shutdown + pool error
+## 11. Task 9 — Graceful shutdown + pool error
 
 **Objective:** a clean exit on SIGTERM/SIGINT, and an idle-connection failure no longer crashes the process (fixes audit §4.2).
 
@@ -363,7 +325,7 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
 
 ---
 
-## 13. Task 11 — Approved bug fixes
+## 12. Task 10 — Approved bug fixes
 
 **Objective:** fix audit §4 items 6 (signup race returns 500) and 7 (long username returns 500), and the client API port mismatch.
 
@@ -376,7 +338,7 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
 1. **Fix 6:** keep the existing pre-check, and also catch the Postgres unique violation (`23505`) on insert and return 409 via `AppError`.
 2. **Fix 7:** validate the signup body server-side with zod:
    - required fields;
-   - `username` and `email` maximum lengths matching the **current** column sizes (confirm them from Task 2's schema).
+   - `username` and `email` maximum lengths matching the column sizes in the Task 4 initial migration (`VARCHAR(50)` and `VARCHAR(100)`).
 
    Invalid bodies return 400. Do **not** add V2 username format rules or password rules yet.
 3. **Port:** change the fallback in `client/src/api/axios.js` to `:5001`, matching `socket.js` and the server.
@@ -393,29 +355,7 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
 
 ---
 
-## 14. Task 12 — Client lint fix
-
-**Objective:** `npm run lint` passes in `client/` (fixes audit §4.9).
-
-**Files likely to change**
-- `client/src/context/AuthContext.jsx`
-- `client/src/context/useAuth.js` (new)
-- the client files that import the hook
-
-**Implementation steps**
-1. Move the non-component export flagged at `AuthContext.jsx:41` into `useAuth.js`.
-2. Update imports. Behavior stays the same.
-
-**Tests/verification**
-- `npm run lint` passes.
-- Manually: signup, login, logout and the protected route still work.
-
-**Definition of done**
-- [ ] Client lint is clean with no rule disabled.
-
----
-
-## 15. Task 13 — README/cleanup
+## 13. Task 11 — README/cleanup
 
 **Objective:** a clone of the repo can be set up by following the README, and dead files are removed.
 
@@ -432,7 +372,7 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
    - remove the `LICENSE` link, unless you decide to add a license;
    - correct the `cd` path;
    - remove the outdated `DATABASE_URL` instruction;
-   - replace the schema section with a pointer to `server/migrations/`.
+   - replace the schema SQL, in both local setup and the Neon deployment steps, with a pointer to `server/migrations/` and `npm run migrate`.
 4. Add a local setup section:
    - prerequisites;
    - `docker compose up`;
@@ -440,7 +380,7 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
    - `npm run migrate`;
    - dev servers;
    - `npm test`.
-5. Link `docs/` (audit, V2 design, this plan, production facts).
+5. Link `docs/`: the audit, the V2 design and this plan.
 
 **Tests/verification**
 - Follow the README from a fresh clone and a clean Docker volume. Every step works.
@@ -452,29 +392,28 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
 
 ---
 
-## 16. Final Phase 0 verification checklist
+## 14. Final Phase 0 verification checklist
 
-- [ ] A production backup exists and is restorable. `docs/production-facts.md` is complete and contains no PII.
 - [ ] A fresh clone can run `docker compose up`, `npm run migrate` and `npm test`, and everything passes.
-- [ ] `relay_dev` holds the restored production data and is marked as baselined. `relay_test` is migrated from the baseline.
+- [ ] `relay_dev` and `relay_test` are built from scratch by migrations.
 - [ ] CI is green on `main`: lint, typecheck, test and build for both projects.
 - [ ] A missing required env var stops startup and names the variable.
 - [ ] Every REST error uses the envelope, and the UI shows server error messages.
 - [ ] A pool error no longer kills the process, and SIGTERM exits cleanly.
 - [ ] Concurrent or duplicate signups return 409, and an over-length username returns 400.
 - [ ] Client and server lint are clean.
-- [ ] Production still works: no schema changes, and only the Render build/start command changed.
+- [ ] Production still works. Only the Render build/start command changed, and the production database was not touched.
 - [ ] Nothing from the deferred list below was implemented.
 
 ---
 
-## 17. Explicitly deferred work
+## 15. Explicitly deferred work
 
 **Deferred to a later phase**
 
 | Item | When |
 |---|---|
-| Marking production as baselined (after a fresh backup) | Start of Phase 1 |
+| Fresh production database: create it empty, run migrations, rotate `JWT_SECRET` (`docs/v2-design.md` §4) | When Phase 1 is first deployed |
 | `packages/shared` and npm workspaces | When the first type is genuinely shared (likely Phase 3–4) |
 | Audit §4 items 3–5 (load race, reconnect gap, lost sends) | Phases 4–5 |
 | Audit §4 item 8 (toast IDs) | Phase 4 `Chat.jsx` rewrite |
@@ -488,8 +427,9 @@ Run everything in a read-only session (`SET default_transaction_read_only = on`)
 
 **Not worth doing for this project**
 
+- Production backups, production data inspection, and migrating existing data (D6).
 - Characterization tests for behavior V2 replaces (single-room events, typing timers, `online_count`, the 401/403 split).
-- Drift-detection scripts and formal restore rehearsals.
+- Drift-detection scripts.
 - Branch protection, deploy gating, pre-deploy migration hooks, and deployment orchestration.
 - Request-ID middleware, health/readiness endpoints, log shipping, APM, monitoring and alerting.
 - Staging environments and Neon preview branches.
