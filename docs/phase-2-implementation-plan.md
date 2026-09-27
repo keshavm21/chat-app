@@ -1,6 +1,6 @@
 # Relay — Phase 2 Implementation Plan
 
-**Status:** 🚧 **Approved, in progress** on the `phase-2` branch (draft PR #2). M0 is done (2026-09-28).
+**Status:** 🚧 **Approved, in progress** on the `phase-2` branch (draft PR #2). M0 and M1 are done (2026-09-28).
 **History:** approved 2026-09-28; the maintainer's decisions on the open questions are recorded in [§16](#16-decisions-confirmed-at-approval).
 **Scope source:** `docs/v2-design.md` (§6 security model, §8 deployment, §9 Phase 2; decisions D3, D4, D15, D17), the deferred list in `docs/phase-0-implementation-plan.md` §15, and the handoff in `docs/phase-1-implementation-plan.md` §16.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
@@ -145,8 +145,8 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - Manually, in the browser: signup, a reload keeps you logged in (via `/me`), logout, login again. `localStorage` holds no `relay_*` keys, and `document.cookie` does not show the session cookie.
 
 **Definition of done**
-- [ ] No token is readable by JavaScript: nothing in `localStorage` or any response body, and the cookie is `HttpOnly`.
-- [ ] No JWT code, dependency or configuration remains.
+- [x] No token is readable by JavaScript: nothing in `localStorage` or any response body, and the cookie is `HttpOnly`. *(`test/sessions.test.ts`; in headless Chrome, signup's body is only `{ user }`, `document.cookie` and `localStorage` hold no `relay_*`, and the dev server's log shows every `Cookie` and `Set-Cookie` as `[Redacted]`.)*
+- [x] No JWT code, dependency or configuration remains. *(`jsonwebtoken`, `@types/jsonwebtoken`, `JWT_SECRET` and `middleware/verifyToken.js` are removed; Render's `JWT_SECRET` is deleted at the release, §15 step 7.)*
 
 ---
 
