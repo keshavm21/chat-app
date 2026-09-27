@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ConfigError, parseEnv } from '../config/env.js';
 
-const valid = { DATABASE_URL: 'postgres://u:p@localhost:5432/relay', JWT_SECRET: 'secret' };
+const valid = { DATABASE_URL: 'postgres://u:p@localhost:5432/relay' };
 
 /** Runs parseEnv and returns the ConfigError it throws. */
 function configErrorFor(env: Record<string, string | undefined>) {
@@ -20,7 +20,6 @@ describe('parseEnv', () => {
       nodeEnv: 'development',
       port: 5001,
       clientUrl: 'http://localhost:5173',
-      jwtSecret: 'secret',
       logLevel: 'info',
       database: { url: valid.DATABASE_URL, port: 5432 },
     });
@@ -28,7 +27,6 @@ describe('parseEnv', () => {
 
   it('accepts the DB_* variables instead of DATABASE_URL and converts ports to numbers', () => {
     const config = parseEnv({
-      JWT_SECRET: 'secret',
       PORT: '8080',
       DB_USER: 'relay',
       DB_HOST: 'localhost',
@@ -41,26 +39,20 @@ describe('parseEnv', () => {
     expect(config.database).toEqual({ user: 'relay', host: 'localhost', name: 'relay_dev', password: 'pw', port: 5433 });
   });
 
-  it('fails on a missing JWT_SECRET and names it', () => {
-    const error = configErrorFor({ DATABASE_URL: valid.DATABASE_URL });
-
-    expect(error.variables).toEqual(['JWT_SECRET']);
-    expect(error.message).toContain('JWT_SECRET');
-  });
-
   it('treats an empty value as missing', () => {
-    expect(configErrorFor({ ...valid, JWT_SECRET: '' }).variables).toEqual(['JWT_SECRET']);
+    expect(configErrorFor({ DATABASE_URL: '' }).variables).toEqual(['DATABASE_URL']);
+    expect(parseEnv({ ...valid, PORT: '' }).port).toBe(5001);
   });
 
   it('fails when neither DATABASE_URL nor the DB_* variables are set', () => {
-    const error = configErrorFor({ JWT_SECRET: 'secret' });
+    const error = configErrorFor({});
 
     expect(error.variables).toEqual(['DATABASE_URL']);
     expect(error.message).toContain('DB_USER, DB_HOST, DB_NAME, DB_PASSWORD');
   });
 
   it('names each missing DB_* variable when only some are set', () => {
-    const error = configErrorFor({ JWT_SECRET: 'secret', DB_USER: 'relay', DB_HOST: 'localhost' });
+    const error = configErrorFor({ DB_USER: 'relay', DB_HOST: 'localhost' });
 
     expect(error.variables).toEqual(['DB_NAME', 'DB_PASSWORD']);
   });

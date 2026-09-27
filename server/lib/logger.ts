@@ -8,7 +8,7 @@ export const loggerOptions = {
   level: config.logLevel,
   redact: {
     paths: [
-      'req.headers.authorization', // JWT bearer token
+      'req.headers.authorization', // unused by the app since sessions, but never log credentials
       'req.headers.cookie',        // the session token; browsers also send every localhost cookie to every port
       'res.headers["set-cookie"]', // the session token, set at signup and login
       'password',

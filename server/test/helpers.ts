@@ -1,7 +1,9 @@
 import type { AddressInfo } from 'net';
 import request from 'supertest';
+import { parseSetCookie } from 'cookie';
 import { io as ioClient, type Socket } from 'socket.io-client';
 import { createApp } from '../app.js';
+import { sessionCookie } from '../lib/sessions.js';
 
 /** Starts the real app (Express + Socket.io) on a random free port. */
 export async function startServer() {
@@ -21,9 +23,20 @@ export async function startServer() {
 
 export type TestServer = Awaited<ReturnType<typeof startServer>>;
 
+/**
+ * The session cookie a response sets, as the `name=value` a later request sends in
+ * its Cookie header (tests have no cookie jar). Throws if the response sets none.
+ */
+export function sessionCookieOf(res: request.Response): string {
+  const setCookies = res.get('Set-Cookie') ?? [];
+  const cookie = setCookies.map((header) => parseSetCookie(header)).find((c) => c.name === sessionCookie.name);
+  if (!cookie?.value) throw new Error('The response sets no session cookie');
+  return `${cookie.name}=${cookie.value}`;
+}
+
 let userCount = 0;
 
-/** Creates a user through POST /api/auth/signup and returns its credentials, user and token. */
+/** Creates a user through POST /api/auth/signup and returns its credentials, user and session cookie. */
 export async function signUp(server: TestServer) {
   userCount += 1;
   const credentials = {
@@ -34,17 +47,19 @@ export async function signUp(server: TestServer) {
   const res = await request(server.httpServer).post('/api/auth/signup').send(credentials).expect(201);
   return {
     ...credentials,
-    token: res.body.token as string,
+    /** For `.set('Cookie', cookie)` and connectSocket(). */
+    cookie: sessionCookieOf(res),
     user: res.body.user as { id: number; username: string; email: string },
   };
 }
 
 const openSockets = new Set<Socket>();
 
-/** Connects a Socket.io client; rejects with the server's connect_error. */
-export function connectSocket(url: string, token?: string): Promise<Socket> {
+/** Connects a Socket.io client with a session cookie (or none); rejects with the server's connect_error. */
+export function connectSocket(url: string, cookie?: string): Promise<Socket> {
   const socket = ioClient(url, {
-    auth: token === undefined ? {} : { token },
+    // The handshake carries the cookie, as a browser's would.
+    extraHeaders: cookie === undefined ? {} : { Cookie: cookie },
     transports: ['websocket'],
     reconnection: false,
     forceNew: true,

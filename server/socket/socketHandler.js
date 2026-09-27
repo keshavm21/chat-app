@@ -1,11 +1,12 @@
 // server/socket/socketHandler.js
-import jwt  from 'jsonwebtoken';
-import { config } from '../config/env.js';
+import pool from '../db/connection.js';
 import { withTransaction } from '../db/transaction.js';
 import { MESSAGE_MAX_LENGTH } from '../lib/limits.js';
 import { logger } from '../lib/logger.js';
+import { hashSessionToken, sessionCookie } from '../lib/sessions.js';
 import { allocateSeq, findGeneralId, markRead } from '../repositories/conversations.js';
 import { createMessage } from '../repositories/messages.js';
+import { findSessionUser } from '../repositories/sessions.js';
 
 // Thrown inside the send transaction to roll it back when the sender is not a member.
 class NotAMemberError extends Error {}
@@ -17,21 +18,31 @@ export default function socketHandler(io) {
   const typingTimers = new Map();
 
   // ── Auth middleware ────────────────────────────────────────────────────────
-  // Runs before every connection is accepted.
-  io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
+  // Runs before every connection is accepted: the browser sends the session cookie
+  // with the handshake. The client logs out on a connect_error whose message
+  // contains "Authentication", so only a missing or invalid session may say that.
+  io.use(async (socket, next) => {
+    const token = sessionCookie.read(socket.handshake.headers.cookie);
 
     if (!token) {
       return next(new Error('Authentication error: no token provided'));
     }
 
+    const sessionHash = hashSessionToken(token);
+    let user;
     try {
-      const decoded = jwt.verify(token, config.jwtSecret);
-      socket.user = decoded; // shape: { id, username, iat, exp }
-      next();
-    } catch {
+      user = await findSessionUser(pool, sessionHash);
+    } catch (err) {
+      logger.error({ err }, 'Socket session lookup failed');
+      return next(new Error('Server error: could not check the session'));
+    }
+    if (!user) {
       return next(new Error('Authentication error: invalid or expired token'));
     }
+
+    socket.user = { id: user.id, username: user.username };
+    socket.sessionHash = sessionHash;
+    next();
   });
 
   // ── Connection handler ─────────────────────────────────────────────────────
@@ -63,8 +74,8 @@ export default function socketHandler(io) {
           const conversationId = await findGeneralId(client);
           const seq = await allocateSeq(client, conversationId);
           const created = await createMessage(client, { conversationId, seq, authorId: socket.user.id, content: text });
-          // Not a member (e.g. the token of a deleted user): roll back, which also
-          // gives the seq back, so it leaves no gap.
+          // Not a member (e.g. a user deleted while their socket is connected): roll
+          // back, which also gives the seq back, so it leaves no gap.
           if (!created) throw new NotAMemberError();
           // The sender has read everything up to their own message.
           await markRead(client, conversationId, socket.user.id, seq);

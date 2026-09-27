@@ -1,6 +1,5 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate }  from 'react-router-dom';
 import { useAuth }      from '../context/useAuth';
 import socket           from '../socket';
 import api              from '../api/axios';
@@ -37,7 +36,6 @@ function ToastContainer({ toasts }) {
 // ─── Chat Page ─────────────────────────────────────────────────────────────────
 export default function Chat() {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
 
   const [messages,     setMessages]     = useState([]);
   const [text,         setText]         = useState('');
@@ -130,9 +128,9 @@ export default function Chat() {
     socket.on('connect_error', (err) => {
       console.error('Socket error:', err.message);
       if (err.message.toLowerCase().includes('authentication')) {
-        // Expired / invalid JWT → force re-login.
+        // The session expired or was revoked: log out, and ProtectedRoute
+        // redirects to /login.
         logout();
-        navigate('/login');
       } else {
         addToast('Connection lost. Reconnecting…');
       }
@@ -147,7 +145,7 @@ export default function Chat() {
       socket.off('connect_error');
       socket.disconnect();
     };
-  }, [logout, navigate, addToast]);
+  }, [logout, addToast]);
 
   // ── Send a message ────────────────────────────────────────────────────────
   const sendMessage = () => {
@@ -179,7 +177,8 @@ export default function Chat() {
     }
   };
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  // Once logged out, ProtectedRoute redirects to /login.
+  const handleLogout = () => { logout(); };
 
   // ── Derived display data ──────────────────────────────────────────────────
   // Group consecutive messages from the same user (within 60 s) to avoid
