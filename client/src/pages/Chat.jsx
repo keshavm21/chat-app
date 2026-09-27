@@ -100,6 +100,7 @@ export default function Chat() {
 
   // ── Socket lifecycle ──────────────────────────────────────────────────────
   useEffect(() => {
+    let active = true;  // false once this effect is cleaned up
     socket.connect();
 
     socket.on('message', (msg) => {
@@ -136,13 +137,28 @@ export default function Chat() {
       }
     });
 
+    // The server cut this socket off, which it does when the session ends (a logout
+    // in another tab, or the session sweep), and Socket.io does not reconnect after
+    // that. Ask the server: a 401 logs out through the Axios interceptor, and
+    // ProtectedRoute redirects to /login; a session that is still valid reconnects.
+    socket.on('disconnect', (reason) => {
+      if (reason !== 'io server disconnect') return;
+      api.get('/api/auth/me')
+        .then(() => { if (active) socket.connect(); })
+        .catch((err) => {
+          if (err.response?.status !== 401) addToast('Disconnected from the server. Reload to reconnect.');
+        });
+    });
+
     return () => {
+      active = false;
       socket.off('message');
       socket.off('online_count');
       socket.off('error');
       socket.off('user_typing');
       socket.off('user_stop_typing');
       socket.off('connect_error');
+      socket.off('disconnect');
       socket.disconnect();
     };
   }, [logout, addToast]);
