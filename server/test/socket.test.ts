@@ -73,6 +73,24 @@ describe('new_message', () => {
       .set('Authorization', `Bearer ${bob.token}`);
     expect(history.body.messages).toEqual([received]);
   });
+
+  // A null payload used to throw inside the handler, and the unhandled rejection
+  // crashed the whole server.
+  it('ignores a payload without text content, including null, and keeps working', async () => {
+    const alice = await signUp(server);
+    const socket = await connectSocket(server.url, alice.token);
+
+    const next = nextEvent<{ content: string }>(socket, 'message');
+    for (const payload of [null, 'text', 42, {}, { content: 42 }, { content: '' }, { content: ' \n ' }]) {
+      socket.emit('new_message', payload);
+    }
+    socket.emit('new_message', { content: 'still here' });
+
+    // The first broadcast is the real message: nothing before it was stored.
+    expect(await next).toMatchObject({ content: 'still here' });
+    const { rows } = await pool.query('SELECT content FROM messages');
+    expect(rows).toEqual([{ content: 'still here' }]);
+  });
 });
 
 describe('typing', () => {
