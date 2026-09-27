@@ -65,10 +65,14 @@ export default function Signup() {
                 onChange={handleChange}
                 placeholder="yourhandle"
                 required
-                minLength={2}
-                maxLength={50}
+                minLength={3}
+                maxLength={32}
+                aria-describedby="username-hint"
                 className="w-full px-4 py-2.5 bg-[#0d1117] border border-[#1f2937] rounded-xl text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 transition-colors text-sm"
               />
+              <p id="username-hint" className="mt-1.5 text-xs text-slate-500">
+                3–32 letters, digits or underscores
+              </p>
             </div>
 
             <div>
@@ -82,6 +86,7 @@ export default function Signup() {
                 onChange={handleChange}
                 placeholder="you@example.com"
                 required
+                maxLength={100}
                 className="w-full px-4 py-2.5 bg-[#0d1117] border border-[#1f2937] rounded-xl text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 transition-colors text-sm"
               />
             </div>
