@@ -7,3 +7,9 @@ export const USERNAME_PATTERN = /^[a-z0-9_]{3,32}$/;
 
 /** Maximum length of a stored email address (stored lowercase). */
 export const EMAIL_MAX_LENGTH = 100;
+
+/**
+ * Maximum length of a message after trimming, in characters (code points, as the
+ * database's char_length() counts them).
+ */
+export const MESSAGE_MAX_LENGTH = 4000;

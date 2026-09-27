@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'crypto';
 import pool from '../db/connection.js';
-import { EMAIL_MAX_LENGTH, USERNAME_PATTERN } from '../lib/limits.js';
+import { EMAIL_MAX_LENGTH, MESSAGE_MAX_LENGTH, USERNAME_PATTERN } from '../lib/limits.js';
 
 // Migration 0002's constraints, tested directly in the database without the app.
 // Every test starts from the per-test reset (test/setup.ts): empty tables and #general.
@@ -237,12 +237,12 @@ describe('conversation_members', () => {
 });
 
 describe('messages', () => {
-  it('requires 1–4000 characters of content unless the message is deleted', async () => {
+  it(`requires 1–MESSAGE_MAX_LENGTH (${MESSAGE_MAX_LENGTH}, lib/limits.ts) characters of content unless deleted`, async () => {
     for (const [row, expected] of [
       [{ content: 'x' }, true],
-      [{ content: 'x'.repeat(4000) }, true],
+      [{ content: 'x'.repeat(MESSAGE_MAX_LENGTH) }, true],
       [{ content: '' }, false],
-      [{ content: 'x'.repeat(4001) }, false],
+      [{ content: 'x'.repeat(MESSAGE_MAX_LENGTH + 1) }, false],
       [{ content: '', deleted_at: new Date() }, true],
     ] as const) {
       expect(await accepted(message(row), 'messages_content_length'), JSON.stringify(row).slice(0, 60)).toBe(expected);

@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Socket } from 'socket.io-client';
 import pool from '../db/connection.js';
+import { MESSAGE_MAX_LENGTH } from '../lib/limits.js';
 import {
   collectEvents,
   connectSocket,
@@ -158,5 +159,25 @@ describe('history order', () => {
     const res = await request(server.httpServer).get('/api/messages').set('Authorization', `Bearer ${user.token}`);
 
     expect(res.body.messages.map((m: Message) => m.seq)).toEqual(Array.from({ length: 50 }, (_, i) => i + 6));
+  });
+});
+
+describe('message length', () => {
+  it(`rejects a message over ${MESSAGE_MAX_LENGTH} characters with an error event and stores nothing`, async () => {
+    const alice = await signUp(server);
+    const socket = await connectSocket(server.url, alice.token);
+
+    const rejected = nextEvent(socket, 'error');
+    socket.emit('new_message', { content: 'x'.repeat(MESSAGE_MAX_LENGTH + 1) });
+    expect(await rejected).toEqual({ message: 'Message is too long (maximum 4000 characters).' });
+    expect(await generalLastSeq()).toBe(0);
+    expect((await pool.query('SELECT 1 FROM messages')).rows).toEqual([]);
+
+    // The limit applies after trimming, and counts characters, not UTF-16 code units
+    // (each emoji is two), like the database's char_length().
+    expect((await send(socket, `  ${'x'.repeat(MESSAGE_MAX_LENGTH)}  `)).seq).toBe(1);
+    expect((await send(socket, '😀'.repeat(MESSAGE_MAX_LENGTH))).seq).toBe(2);
+    const { rows } = await pool.query('SELECT char_length(content) AS length FROM messages ORDER BY seq');
+    expect(rows).toEqual([{ length: MESSAGE_MAX_LENGTH }, { length: MESSAGE_MAX_LENGTH }]);
   });
 });
