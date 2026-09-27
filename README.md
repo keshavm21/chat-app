@@ -45,12 +45,14 @@ Relay is being evolved into **Relay V2**: public and private channels, direct me
 | Phase | Status |
 |---|---|
 | **0 — Foundation:** migrations, TypeScript tooling, integration tests, CI, config validation, error envelope, structured logging, graceful shutdown | ✅ Complete |
-| **1 — V2 data model** on a fresh database | Next |
+| **1 — V2 data model** on a fresh database: channels, DMs and memberships in the schema, gapless per-conversation message order, signup validation | ✅ Complete on the `phase-1` branch. Production still runs Phase 0 until the cutover |
 | 2–8 — sessions, conversations, messaging, sync, awareness, editing, hardening | Planned |
 
 - [Current-state audit](./docs/current-state-audit.md) — the analysis the V2 work starts from
 - [V2 design](./docs/v2-design.md) — target architecture, decisions (D1–D17) and the full roadmap
 - [Phase 0 implementation plan](./docs/phase-0-implementation-plan.md) — tasks, verification and the completion record
+- [Phase 1 implementation plan](./docs/phase-1-implementation-plan.md) — milestones, the completion record and the production cutover runbook
+- [Architecture decision records](./docs/adr/) — the fresh database and migration layout, integer IDs, the per-conversation message sequence
 
 ---
 
@@ -79,7 +81,7 @@ chat-app/
 ├── .github/workflows/ci.yml         — CI: lint, typecheck, test, build
 ├── docker-compose.yml               — local PostgreSQL 17 (relay_dev + relay_test)
 ├── .env.example                     — server environment variables
-├── docs/                            — audit, V2 design, Phase 0 plan
+├── docs/                            — audit, V2 design, phase plans, ADRs
 ├── client/                          ← React frontend (Vite)
 │   └── src/
 │       ├── api/axios.js             — Axios instance with JWT interceptor
@@ -91,13 +93,14 @@ chat-app/
 │       └── App.jsx                  — React Router route definitions
 └── server/                          ← Express backend
     ├── config/env.ts                — loads .env and validates every variable
-    ├── db/connection.js             — PostgreSQL connection pool
-    ├── http/                        — JSON 404 and the central error handler
-    ├── lib/                         — AppError + error codes, pino logger
+    ├── db/                          — PostgreSQL connection pool, withTransaction()
+    ├── http/                        — request schemas (zod), JSON 404, the central error handler
+    ├── lib/                         — AppError + error codes, shared limits, pino logger
     ├── middleware/verifyToken.js    — JWT verification middleware
-    ├── migrations/                  — SQL migrations
+    ├── migrations/                  — SQL migrations (0001 Phase 0 schema, 0002 V2 schema)
+    ├── repositories/                — SQL for users, conversations and messages
     ├── routes/auth.js               — POST /api/auth/signup, /login
-    ├── routes/messages.js           — GET /api/messages (last 50, protected)
+    ├── routes/messages.js           — GET /api/messages (last 50 of #general, protected)
     ├── socket/socketHandler.js      — Socket.io event handlers
     ├── test/                        — integration tests
     ├── app.js                       — builds Express + Socket.io (without listening)
@@ -150,7 +153,7 @@ The client needs no configuration locally: it talks to `http://localhost:5001` u
 cd server && npm run migrate
 ```
 
-This applies the SQL migrations in `server/migrations/` to `relay_dev`. Running it again reports that there is nothing to migrate.
+This applies the SQL migrations in `server/migrations/` to `relay_dev`: `0001` (the Phase 0 schema) and `0002` (the V2 schema, which replaces it and creates the `#general` channel). Running it again reports that there is nothing to migrate. `npm run migrate:down` rolls back the last migration.
 
 ### 5. Run
 
@@ -194,7 +197,7 @@ cd ../client && npm run lint && npm run typecheck && npm run build
 
 3. Use the connection string as `DATABASE_URL` in the Render environment variables (below).
 
-> The live demo's database was created before migrations existed. Per the V2 plan it is replaced by a fresh database when Phase 1 is deployed ([V2 design §4](./docs/v2-design.md)), so don't run migrations against it.
+> The live demo's database was created before migrations existed and still runs Phase 0, so don't run migrations against it. Production moves to the V2 schema with a new, empty database, following the cutover runbook in the [Phase 1 plan, §13](./docs/phase-1-implementation-plan.md#13-production-cutover-runbook-prepared-not-executed-in-phase-1).
 
 ### Render — Express server
 
@@ -233,7 +236,7 @@ On every deploy Render sends the old instance `SIGTERM`. The server shuts down g
 
 ### Authentication
 
-1. User signs up → server hashes the password with bcrypt and returns a signed JWT
+1. User signs up → server validates the username and email and stores them lowercase, hashes the password with bcrypt, adds the user to `#general` and returns a signed JWT
 2. React stores the token in `localStorage`; an Axios interceptor attaches it as `Authorization: Bearer <token>` on every outgoing request
 3. Express `verifyToken` middleware validates the token on all protected HTTP routes
 4. Socket.io verifies the same token during the WebSocket handshake — invalid tokens are rejected before the connection is established
@@ -242,8 +245,9 @@ On every deploy Render sends the old instance `SIGTERM`. The server shuts down g
 
 1. On mounting `/chat`, the client calls `socket.connect()` with the JWT in the auth payload
 2. The user sends a message → client emits `new_message`
-3. Server inserts the row into PostgreSQL, then broadcasts the complete message object to all connected clients
-4. Every open browser receives the `message` event and appends it to the list — no refresh, no polling
+3. In one database transaction, the server takes `#general`'s next sequence number (`seq`) and stores the message if the sender is a member. Locking the channel's row makes the numbers gapless and puts them in commit order, and a failed send uses none up
+4. After the commit, the server broadcasts the complete message object, including `seq`, to all connected clients
+5. Every open browser receives the `message` event and appends it to the list — no refresh, no polling. History (`GET /api/messages`) returns the last 50 messages by `seq`
 
 ### Typing indicators
 

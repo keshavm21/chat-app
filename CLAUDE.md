@@ -16,8 +16,9 @@ Deployed as server on Render, client on Vercel, DB on Neon.
 Relay is being evolved into Relay V2 in phases (`docs/v2-design.md` §9; decisions D1–D17 in §10).
 
 - **Phase 0 (foundation) is complete** (2026-09-27): see `docs/phase-0-implementation-plan.md`, §16 for the completion record and known issues.
-- **Phase 1 (V2 data model on a fresh database, D6) is in progress** per the approved `docs/phase-1-implementation-plan.md` (milestones M0–M4; each starts only after the maintainer approves the previous one). All Phase 1 commits go to the long-lived `phase-1` branch, never to `main`: Render deploys `main`, and production stays on Phase 0 until the separate cutover (plan §13). Draft PR #1 (`phase-1 → main`) only runs CI; do not merge it.
-- Working rules that held for Phase 0: one task per commit; don't implement items from a plan's deferred list; if a step needs something the plan doesn't list, stop and ask. Never connect to or modify the production database.
+- **Phase 1 (V2 data model on a fresh database, D6) is complete** (2026-09-27) on the long-lived `phase-1` branch: see `docs/phase-1-implementation-plan.md`, §15 for the completion record and known issues, and `docs/adr/` for its decisions. Production (Render deploys `main`) is still on Phase 0 until the maintainer runs the cutover (plan §13). Draft PR #1 (`phase-1 → main`) only runs CI; do not merge it outside the cutover.
+- **Next:** the maintainer decides on the cutover and on the Phase 2 plan (`docs/phase-2-implementation-plan.md`, approved before any Phase 2 code; the Phase 1 plan's §16 is the handoff). Until the cutover, Phase 0 fixes go to `main` and `main` is merged into `phase-1`.
+- Working rules that held for Phases 0 and 1: one task per commit; don't implement items from a plan's deferred list; if a step needs something the plan doesn't list, stop and ask. Never connect to or modify the production database.
 
 ## Commands
 
@@ -30,7 +31,7 @@ docker compose down -v      # wipe local data; next `up` recreates both database
 npm install
 npm run migrate             # apply pending migrations to $DATABASE_URL (relay_dev)
 npm run migrate:down        # roll back the last migration
-npm run migrate:create -- <name>   # new SQL migration: migrations/NNNN_<name>.sql
+npm run migrate:create -- <name>   # new SQL migration: migrations/NNNN_<name>.sql (underscores in <name> become hyphens)
 DATABASE_URL=postgres://relay:relay@localhost:5433/relay_test?sslmode=disable npm run migrate   # migrate relay_test
 npm run dev        # tsx watch index.js
 npm run build      # tsc -p tsconfig.build.json → dist/
