@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import express from 'express';
 import request from 'supertest';
 import { parseSetCookie } from 'cookie';
@@ -7,7 +7,7 @@ import pool from '../db/connection.js';
 import { logger } from '../lib/logger.js';
 import { SESSION_MAX_AGE_MS, USER_AGENT_MAX_LENGTH } from '../lib/limits.js';
 import { sessionCookieFor } from '../lib/sessions.js';
-import { sessionCookieOf, signUp, startServer, type TestServer } from './helpers.js';
+import { sessionCookieOf, sessionHashOf, setSessionAgo, signUp, startServer, type TestServer } from './helpers.js';
 
 // Server-side sessions (docs/v2-design.md §6): expiry is tested by moving the
 // session's timestamps in the database, never by waiting.
@@ -33,7 +33,6 @@ const SESSION_EXPIRED = {
 const credentials = { username: 'alice', email: 'alice@example.test', password: 'password123' };
 
 const tokenOf = (cookie: string) => cookie.slice(cookie.indexOf('=') + 1);
-const hashOf = (cookie: string) => createHash('sha256').update(tokenOf(cookie)).digest();
 const unknownSession = () => `relay_session=${randomBytes(32).toString('base64url')}`;
 
 /** GET /api/auth/me with a session cookie (`name=value`), or with none. */
@@ -51,13 +50,8 @@ function logout(cookie?: string) {
   return cookie === undefined ? req : req.set('Cookie', cookie);
 }
 
-/** Puts a session's `column` this far (a Postgres interval, e.g. '8 days') in the past. */
-async function setAgo(cookie: string, column: 'expires_at' | 'last_seen_at', interval: string) {
-  await pool.query(`UPDATE sessions SET ${column} = now() - $2::interval WHERE token_hash = $1`, [hashOf(cookie), interval]);
-}
-
 async function session(cookie: string) {
-  const { rows } = await pool.query('SELECT * FROM sessions WHERE token_hash = $1', [hashOf(cookie)]);
+  const { rows } = await pool.query('SELECT * FROM sessions WHERE token_hash = $1', [sessionHashOf(cookie)]);
   return rows[0];
 }
 
@@ -107,7 +101,7 @@ describe('the session cookie', () => {
 
     const row = await session(alice.cookie);
     expect(row.user_id).toBe(alice.user.id);
-    expect(row.token_hash).toEqual(hashOf(alice.cookie));
+    expect(row.token_hash).toEqual(sessionHashOf(alice.cookie));
     const { rows } = await pool.query('SELECT s::text AS text FROM sessions s');
     expect(rows).toHaveLength(1);
     expect(rows[0].text).not.toContain(tokenOf(alice.cookie));
@@ -144,7 +138,7 @@ describe('GET /api/auth/me', () => {
 
   it('returns 401 once the session is past expires_at', async () => {
     const alice = await signUp(server);
-    await setAgo(alice.cookie, 'expires_at', '1 second');
+    await setSessionAgo(alice.cookie, 'expires_at', '1 second');
 
     const res = await me(alice.cookie);
 
@@ -154,10 +148,10 @@ describe('GET /api/auth/me', () => {
 
   it('returns 401 once the session has not been used for over 7 days', async () => {
     const alice = await signUp(server);
-    await setAgo(alice.cookie, 'last_seen_at', '6 days 23 hours');
+    await setSessionAgo(alice.cookie, 'last_seen_at', '6 days 23 hours');
     await me(alice.cookie).expect(200);
 
-    await setAgo(alice.cookie, 'last_seen_at', '8 days');
+    await setSessionAgo(alice.cookie, 'last_seen_at', '8 days');
     const res = await me(alice.cookie);
 
     expect(res.status).toBe(401);
@@ -166,17 +160,17 @@ describe('GET /api/auth/me', () => {
 
   it('moves last_seen_at when it is over an hour old, not on every request', async () => {
     const alice = await signUp(server);
-    await setAgo(alice.cookie, 'last_seen_at', '30 minutes');
+    await setSessionAgo(alice.cookie, 'last_seen_at', '30 minutes');
     const recent = (await session(alice.cookie)).last_seen_at;
 
     await me(alice.cookie).expect(200);
     expect((await session(alice.cookie)).last_seen_at).toEqual(recent);
 
-    await setAgo(alice.cookie, 'last_seen_at', '2 hours');
+    await setSessionAgo(alice.cookie, 'last_seen_at', '2 hours');
     await me(alice.cookie).expect(200);
     const { rows } = await pool.query(
       `SELECT now() - last_seen_at < interval '1 minute' AS just_now FROM sessions WHERE token_hash = $1`,
-      [hashOf(alice.cookie)],
+      [sessionHashOf(alice.cookie)],
     );
     expect(rows[0].just_now).toBe(true);
   });
