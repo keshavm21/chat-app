@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: Lint, typecheck and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Node 24: the version used locally and Render's default for this service.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Client — install
+        working-directory: client
+        run: npm ci
+      - name: Client — lint
+        working-directory: client
+        run: npm run lint
+      - name: Client — typecheck
+        working-directory: client
+        run: npm run typecheck
+      - name: Client — build
+        working-directory: client
+        run: npm run build
+
+      - name: Server — install
+        working-directory: server
+        run: npm ci
+      - name: Server — lint
+        working-directory: server
+        run: npm run lint
+      - name: Server — typecheck
+        working-directory: server
+        run: npm run typecheck
+      - name: Server — build
+        working-directory: server
+        run: npm run build
