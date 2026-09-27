@@ -61,4 +61,18 @@ describe('logger redaction', () => {
     expect(entry.err).toMatchObject({ message: pgError.message, code: '23514', detail: '[Redacted]' });
     expect(lines.join('\n')).not.toContain('SECRET-HASH');
   });
+
+  it('hides the pg client that pg-pool attaches to pool errors (it contains the DB password)', () => {
+    const { logger, lines } = capturingLogger();
+    const poolError = Object.assign(new Error('terminating connection due to administrator command'), {
+      code: '57P01',
+      client: { password: 'SECRET-DB-PASSWORD', connectionParameters: { password: 'SECRET-DB-PASSWORD' } },
+    });
+
+    logger.error({ err: poolError }, 'Idle database client error');
+
+    const [entry] = lines.map((line) => JSON.parse(line));
+    expect(entry.err).toMatchObject({ code: '57P01', client: '[Redacted]' });
+    expect(lines.join('\n')).not.toContain('SECRET-DB-PASSWORD');
+  });
 });
