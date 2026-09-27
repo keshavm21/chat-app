@@ -1,0 +1,37 @@
+# Local development/test database only. Not used in production.
+#
+#   docker compose up -d --wait   start (creates relay_dev and relay_test on first run)
+#   docker compose down -v        stop and delete all local data
+#
+# Host port 5433 avoids clashing with a locally installed Postgres on 5432.
+
+name: relay
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: relay
+      POSTGRES_PASSWORD: relay
+      POSTGRES_DB: relay_dev
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    configs:
+      # Runs only when the volume is empty (first start or after `down -v`).
+      - source: create-test-database
+        target: /docker-entrypoint-initdb.d/create-test-database.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relay -d relay_dev"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+configs:
+  create-test-database:
+    content: |
+      CREATE DATABASE relay_test;
+
+volumes:
+  pgdata:
