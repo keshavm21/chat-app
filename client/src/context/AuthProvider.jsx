@@ -40,7 +40,8 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
-      await api.post('/api/auth/logout');
+      // A JSON body, like every state-changing request: the server refuses others (415).
+      await api.post('/api/auth/logout', {});
     } catch {
       // Log out locally even if the request fails (e.g. offline).
     }

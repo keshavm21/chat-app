@@ -1,9 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import request from 'supertest';
 import type { Socket } from 'socket.io-client';
 import pool from '../db/connection.js';
 import { MESSAGE_MAX_LENGTH } from '../lib/limits.js';
 import {
+  api,
   collectEvents,
   connectSocket,
   disconnectAllSockets,
@@ -141,7 +141,7 @@ describe('history order', () => {
       [user.user.id],
     );
 
-    const res = await request(server.httpServer).get('/api/messages').set('Cookie', user.cookie);
+    const res = await api(server).get('/api/messages').set('Cookie', user.cookie);
 
     expect(res.body.messages.map((m: Message) => m.content)).toEqual(['first', 'second', 'third']);
   });
@@ -156,7 +156,7 @@ describe('history order', () => {
       [user.user.id],
     );
 
-    const res = await request(server.httpServer).get('/api/messages').set('Cookie', user.cookie);
+    const res = await api(server).get('/api/messages').set('Cookie', user.cookie);
 
     expect(res.body.messages.map((m: Message) => m.seq)).toEqual(Array.from({ length: 50 }, (_, i) => i + 6));
   });

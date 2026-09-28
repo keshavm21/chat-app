@@ -1,9 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import request from 'supertest';
 import bcrypt from 'bcrypt';
 import pool from '../db/connection.js';
 import { logger } from '../lib/logger.js';
-import { sessionCookieOf, signUp, startServer, type TestServer } from './helpers.js';
+import { api, sessionCookieOf, signUp, startServer, type TestServer } from './helpers.js';
 
 let server: TestServer;
 
@@ -28,7 +27,7 @@ async function userCount() {
 
 describe('POST /api/auth/signup', () => {
   it('creates the user, returns it without a token and stores a bcrypt hash of the password', async () => {
-    const res = await request(server.httpServer).post('/api/auth/signup').send(alice);
+    const res = await api(server).post('/api/auth/signup').send(alice);
 
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ user: { id: expect.any(Number), username: 'alice', email: 'alice@example.test' } });
@@ -42,7 +41,7 @@ describe('POST /api/auth/signup', () => {
   it('adds the new user to #general as a member who has already read its earlier messages', async () => {
     await pool.query(`UPDATE conversations SET last_seq = 7 WHERE name = 'general'`);
 
-    const res = await request(server.httpServer).post('/api/auth/signup').send(alice).expect(201);
+    const res = await api(server).post('/api/auth/signup').send(alice).expect(201);
 
     const { rows } = await pool.query(
       `SELECT c.name, m.role, m.last_read_seq
@@ -58,7 +57,7 @@ describe('POST /api/auth/signup', () => {
     // Without #general, adding the membership fails after the user was inserted.
     await pool.query(`DELETE FROM conversations WHERE name = 'general'`);
 
-    const res = await request(server.httpServer).post('/api/auth/signup').send(alice);
+    const res = await api(server).post('/api/auth/signup').send(alice);
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Server error during signup.' } });
@@ -68,9 +67,9 @@ describe('POST /api/auth/signup', () => {
   });
 
   it('rejects a duplicate email with 409', async () => {
-    await request(server.httpServer).post('/api/auth/signup').send(alice).expect(201);
+    await api(server).post('/api/auth/signup').send(alice).expect(201);
 
-    const res = await request(server.httpServer)
+    const res = await api(server)
       .post('/api/auth/signup')
       .send({ ...alice, username: 'someone_else' });
 
@@ -80,9 +79,9 @@ describe('POST /api/auth/signup', () => {
   });
 
   it('rejects a duplicate username with 409', async () => {
-    await request(server.httpServer).post('/api/auth/signup').send(alice).expect(201);
+    await api(server).post('/api/auth/signup').send(alice).expect(201);
 
-    const res = await request(server.httpServer)
+    const res = await api(server)
       .post('/api/auth/signup')
       .send({ ...alice, email: 'other@example.test' });
 
@@ -97,12 +96,12 @@ describe('POST /api/auth/signup', () => {
     ['email', { ...alice, username: 'someone_else' }],
     ['username', { ...alice, email: 'other@example.test' }],
   ])('returns 409, not 500, when the unique constraint catches a duplicate %s the pre-check missed', async (_field, duplicate) => {
-    await request(server.httpServer).post('/api/auth/signup').send(alice).expect(201);
+    await api(server).post('/api/auth/signup').send(alice).expect(201);
     const logged = vi.spyOn(logger, 'error');
     // Simulate losing the race: the pre-check SELECT sees no existing user.
     vi.spyOn(pool, 'query').mockResolvedValueOnce({ rows: [] } as never);
 
-    const res = await request(server.httpServer).post('/api/auth/signup').send(duplicate);
+    const res = await api(server).post('/api/auth/signup').send(duplicate);
 
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: { code: 'CONFLICT', message: 'Email or username is already taken.' } });
@@ -113,7 +112,7 @@ describe('POST /api/auth/signup', () => {
   it('handles concurrent signups with the same email: exactly one 201, the rest 409, never 500', async () => {
     const results = await Promise.all(
       [1, 2, 3, 4, 5].map((n) =>
-        request(server.httpServer)
+        api(server)
           .post('/api/auth/signup')
           .send({ username: `racer${n}`, email: 'race@example.test', password: 'password123' }),
       ),
@@ -135,7 +134,7 @@ describe('POST /api/auth/signup', () => {
     ['with a hyphen', 'has-hyphen'],
     ['with a non-ASCII letter', 'élise'],
   ])('rejects an invalid username (%s) with 400 VALIDATION_ERROR', async (_case, username) => {
-    const res = await request(server.httpServer).post('/api/auth/signup').send({ ...alice, username });
+    const res = await api(server).post('/api/auth/signup').send({ ...alice, username });
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
@@ -145,14 +144,14 @@ describe('POST /api/auth/signup', () => {
   });
 
   it.each(['abc', 'x'.repeat(32), 'under_score_42'])('accepts the username %s', async (username) => {
-    const res = await request(server.httpServer).post('/api/auth/signup').send({ ...alice, username });
+    const res = await api(server).post('/api/auth/signup').send({ ...alice, username });
 
     expect(res.status).toBe(201);
     expect(res.body.user.username).toBe(username);
   });
 
   it('stores the username trimmed and lowercased, so another case of it is a duplicate', async () => {
-    const res = await request(server.httpServer).post('/api/auth/signup').send({ ...alice, username: ' Alice_1 ' });
+    const res = await api(server).post('/api/auth/signup').send({ ...alice, username: ' Alice_1 ' });
 
     expect(res.status).toBe(201);
     expect(res.body.user.username).toBe('alice_1');
@@ -160,7 +159,7 @@ describe('POST /api/auth/signup', () => {
     const { rows } = await pool.query('SELECT username, display_name FROM users');
     expect(rows).toEqual([{ username: 'alice_1', display_name: 'Alice_1' }]);
 
-    const duplicate = await request(server.httpServer)
+    const duplicate = await api(server)
       .post('/api/auth/signup')
       .send({ ...alice, username: 'alice_1', email: 'other@example.test' });
 
@@ -169,14 +168,14 @@ describe('POST /api/auth/signup', () => {
   });
 
   it('stores the email trimmed and lowercased, so another case of it is a duplicate', async () => {
-    const res = await request(server.httpServer)
+    const res = await api(server)
       .post('/api/auth/signup')
       .send({ ...alice, email: ' Alice@Example.test ' });
 
     expect(res.status).toBe(201);
     expect(res.body.user.email).toBe('alice@example.test');
 
-    const duplicate = await request(server.httpServer)
+    const duplicate = await api(server)
       .post('/api/auth/signup')
       .send({ ...alice, username: 'someone_else', email: 'ALICE@EXAMPLE.TEST' });
 
@@ -189,7 +188,7 @@ describe('POST /api/auth/signup', () => {
     ['missing its domain', 'alice@', 'Email must be a valid email address.'],
     ['101 characters', `${'a'.repeat(88)}@example.test`, 'Email must be at most 100 characters.'],
   ])('rejects an invalid email (%s) with 400 VALIDATION_ERROR', async (_case, email, message) => {
-    const res = await request(server.httpServer).post('/api/auth/signup').send({ ...alice, email });
+    const res = await api(server).post('/api/auth/signup').send({ ...alice, email });
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({ error: { code: 'VALIDATION_ERROR', message, details: [{ field: 'email', message }] } });
@@ -199,7 +198,7 @@ describe('POST /api/auth/signup', () => {
   it('accepts an email of exactly 100 characters', async () => {
     const email = `${'a'.repeat(87)}@example.test`;
 
-    const res = await request(server.httpServer).post('/api/auth/signup').send({ ...alice, email });
+    const res = await api(server).post('/api/auth/signup').send({ ...alice, email });
 
     expect(res.status).toBe(201);
     expect(res.body.user.email).toBe(email);
@@ -210,23 +209,23 @@ describe('POST /api/auth/login', () => {
   it('returns the user without a token, and starts a session, for correct credentials', async () => {
     const user = await signUp(server);
 
-    const res = await request(server.httpServer)
+    const res = await api(server)
       .post('/api/auth/login')
       .send({ email: user.email, password: user.password });
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ user: user.user });
-    const me = await request(server.httpServer).get('/api/auth/me').set('Cookie', sessionCookieOf(res));
+    const me = await api(server).get('/api/auth/me').set('Cookie', sessionCookieOf(res));
     expect(me.body).toEqual({ user: user.user });
   });
 
   it('responds identically to an unknown email and a wrong password', async () => {
     const user = await signUp(server);
 
-    const unknownEmail = await request(server.httpServer)
+    const unknownEmail = await api(server)
       .post('/api/auth/login')
       .send({ email: 'nobody@example.test', password: user.password });
-    const wrongPassword = await request(server.httpServer)
+    const wrongPassword = await api(server)
       .post('/api/auth/login')
       .send({ email: user.email, password: 'wrong-password' });
 
@@ -239,12 +238,12 @@ describe('POST /api/auth/login', () => {
   });
 
   it('normalizes the email the same way as signup before the lookup', async () => {
-    const signup = await request(server.httpServer)
+    const signup = await api(server)
       .post('/api/auth/signup')
       .send({ ...alice, email: 'Alice@Example.test' })
       .expect(201);
 
-    const res = await request(server.httpServer)
+    const res = await api(server)
       .post('/api/auth/login')
       .send({ email: ' ALICE@example.test ', password: alice.password });
 

@@ -1,6 +1,7 @@
 // server/app.js
 import express          from 'express';
 import cors             from 'cors';
+import helmet           from 'helmet';
 import { pinoHttp }     from 'pino-http';
 import { createServer } from 'http';
 import { Server }       from 'socket.io';
@@ -9,7 +10,7 @@ import authRoutes      from './routes/auth.js';
 import messagesRoutes  from './routes/messages.js';
 import socketHandler   from './socket/socketHandler.js';
 import { startSessionSweep } from './socket/sessionSweep.js';
-import { config }      from './config/env.js';
+import { allowedOrigin, allowSocketHandshake, requireAllowedOrigin, requireJsonBody } from './http/csrf.js';
 import { notFound }     from './http/notFound.js';
 import { errorHandler } from './http/errorHandler.js';
 import { logger }       from './lib/logger.js';
@@ -19,8 +20,6 @@ import { logger }       from './lib/logger.js';
 export function createApp() {
   const app = express();
 
-  const CLIENT_URL = config.clientUrl;
-
   // ── HTTP server + Socket.io ──────────────────────────────────────────────────
   // Socket.io needs a raw http.Server — it can't be attached to app directly.
   // Created before the routes, which need `io` (logout disconnects sockets).
@@ -28,10 +27,12 @@ export function createApp() {
 
   const io = new Server(httpServer, {
     cors: {
-      origin: CLIENT_URL,
+      origin: allowedOrigin,
       methods: ['GET', 'POST'],
       credentials: true,
     },
+    // CORS does not cover WebSockets: every handshake must come from the app's origin.
+    allowRequest: allowSocketHandshake,
   });
 
   socketHandler(io);
@@ -39,10 +40,16 @@ export function createApp() {
   // ── Express app ──────────────────────────────────────────────────────────────
   // First, so every request (including CORS preflights and errors) gets one log line.
   app.use(pinoHttp({ logger }));
+  // Security headers on every response, errors included; removes X-Powered-By. The
+  // Content Security Policy belongs to the SPA and comes later (Phase 8).
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.use(cors({
-    origin: CLIENT_URL,
+    origin: allowedOrigin,
     credentials: true,
   }));
+  // CSRF: a state-changing /api request must come from the app's origin (else 403) and
+  // carry JSON (else 415). Both run before the body is parsed; preflights never get here.
+  app.use('/api', requireAllowedOrigin, requireJsonBody);
   app.use(express.json());
 
   app.use('/api/auth',     authRoutes(io));
