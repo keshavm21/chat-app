@@ -35,6 +35,9 @@ const schema = z
     DB_PASSWORD:  blankAsUnset(z.string().optional()),
     DB_PORT:      blankAsUnset(port.default(5432)),
     LOG_LEVEL:    blankAsUnset(z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info')),
+    // How many proxies in front of the server to trust for X-Forwarded-For (Express's
+    // `trust proxy`): 0 trusts none, so a client cannot choose its own IP.
+    TRUST_PROXY:  blankAsUnset(z.coerce.number().int().min(0).default(0)),
   })
   .superRefine((env, ctx) => {
     // DATABASE_URL takes precedence; otherwise every DB_* connection variable is needed.
@@ -73,6 +76,7 @@ export function parseEnv(env: Record<string, string | undefined>) {
     port:      e.PORT,
     clientUrl: e.CLIENT_URL,
     logLevel:  e.LOG_LEVEL,
+    trustProxy: e.TRUST_PROXY,
     // `url` wins when set; the DB_* fields are then unused (same precedence as before).
     database: Object.freeze({
       url:      e.DATABASE_URL,

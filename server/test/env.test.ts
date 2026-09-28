@@ -21,8 +21,18 @@ describe('parseEnv', () => {
       port: 5001,
       clientUrl: 'http://localhost:5173',
       logLevel: 'info',
+      trustProxy: 0,
       database: { url: valid.DATABASE_URL, port: 5432 },
     });
+  });
+
+  it('reads TRUST_PROXY as a number of proxy hops, and refuses anything else', () => {
+    expect(parseEnv({ ...valid, TRUST_PROXY: '1' }).trustProxy).toBe(1);
+    expect(parseEnv({ ...valid, TRUST_PROXY: '' }).trustProxy).toBe(0);
+
+    for (const value of ['true', '-1', '1.5', 'loopback']) {
+      expect(configErrorFor({ ...valid, TRUST_PROXY: value }).variables, value).toEqual(['TRUST_PROXY']);
+    }
   });
 
   it('accepts the DB_* variables instead of DATABASE_URL and converts ports to numbers', () => {

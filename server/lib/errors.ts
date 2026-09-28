@@ -11,6 +11,7 @@ export const ErrorCode = {
   FORBIDDEN:           'FORBIDDEN',           // 403: a state-changing request from an origin that is not allowed
   NOT_FOUND:           'NOT_FOUND',           // 404: unknown /api route
   UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE', // 415: a state-changing request whose body is not JSON
+  RATE_LIMITED:        'RATE_LIMITED',        // 429: too many login or signup attempts (with Retry-After)
   CONFLICT:            'CONFLICT',            // 409: e.g. email or username already taken
   INTERNAL_ERROR:      'INTERNAL_ERROR',      // 500
 } as const;

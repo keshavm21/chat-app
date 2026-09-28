@@ -5,11 +5,22 @@ import { io as ioClient, type Socket } from 'socket.io-client';
 import { createApp } from '../app.js';
 import pool from '../db/connection.js';
 import { allowedOrigin } from '../http/csrf.js';
+import type { RateLimits } from '../http/rateLimits.js';
 import { hashSessionToken, sessionCookie } from '../lib/sessions.js';
 
-/** Starts the real app (Express + Socket.io + the session sweep) on a random free port. */
-export async function startServer() {
-  const { app, httpServer, io, sessionSweep } = createApp();
+// Test files sign up and log in from one IP far more often than the real limits allow.
+// rateLimits.test.ts passes the real ones (RATE_LIMITS) or low ones instead.
+const TEST_RATE_LIMITS: RateLimits = {
+  login: { limit: 100_000, windowMs: 60_000 },
+  signup: { limit: 100_000, windowMs: 60_000 },
+};
+
+/**
+ * Starts the real app (Express + Socket.io + its timers) on a random free port, with
+ * createApp's options: `rateLimits` (default: high enough never to matter) and `trustProxy`.
+ */
+export async function startServer(options: { rateLimits?: RateLimits; trustProxy?: number } = {}) {
+  const { app, httpServer, io, stopTimers } = createApp({ rateLimits: TEST_RATE_LIMITS, ...options });
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const { port } = httpServer.address() as AddressInfo;
 
@@ -18,9 +29,9 @@ export async function startServer() {
     httpServer,
     io,
     url: `http://localhost:${port}`,
-    // Stops the session sweep; then io.close() disconnects every socket and closes the HTTP server.
+    // Stops the app's timers; then io.close() disconnects every socket and closes the HTTP server.
     close: async () => {
-      await sessionSweep.stop();
+      await stopTimers();
       await new Promise<void>((resolve) => io.close(() => resolve()));
     },
   };

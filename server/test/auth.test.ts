@@ -1,6 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import bcrypt from 'bcrypt';
 import pool from '../db/connection.js';
+import { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH } from '../lib/limits.js';
 import { logger } from '../lib/logger.js';
 import { api, sessionCookieOf, signUp, startServer, type TestServer } from './helpers.js';
 
@@ -205,6 +206,54 @@ describe('POST /api/auth/signup', () => {
   });
 });
 
+describe('signup password rules', () => {
+  const E_ACUTE = 'é'; // é: 1 character, 2 bytes in UTF-8
+  const tooShort = `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
+  const tooLong = `Password must be at most ${PASSWORD_MAX_BYTES} bytes; accented letters and emoji take 2–4 bytes each.`;
+
+  it.each([
+    [`${PASSWORD_MIN_LENGTH} characters`, 'a'.repeat(PASSWORD_MIN_LENGTH)],
+    [`exactly ${PASSWORD_MAX_BYTES} bytes of ASCII`, 'a'.repeat(PASSWORD_MAX_BYTES)],
+    [`exactly ${PASSWORD_MAX_BYTES} bytes of 2-byte characters`, E_ACUTE.repeat(PASSWORD_MAX_BYTES / 2)],
+  ])('accepts a password of %s, which then logs in', async (_case, password) => {
+    const res = await api(server).post('/api/auth/signup').send({ ...alice, password });
+
+    expect(res.status).toBe(201);
+    const login = await api(server).post('/api/auth/login').send({ email: alice.email, password });
+    expect(login.status).toBe(200);
+  });
+
+  it.each([
+    [`${PASSWORD_MIN_LENGTH - 1} characters`, 'a'.repeat(PASSWORD_MIN_LENGTH - 1), tooShort],
+    ['4 emoji (8 UTF-16 code units, but 4 characters)', '😀'.repeat(4), tooShort],
+    [`${PASSWORD_MAX_BYTES + 1} bytes of ASCII`, 'a'.repeat(PASSWORD_MAX_BYTES + 1), tooLong],
+    [`${PASSWORD_MAX_BYTES + 1} bytes in ${PASSWORD_MAX_BYTES / 2 + 1} characters`, `${E_ACUTE.repeat(PASSWORD_MAX_BYTES / 2)}a`, tooLong],
+  ])('rejects a password of %s with 400 VALIDATION_ERROR, never cutting it', async (_case, password, message) => {
+    const res = await api(server).post('/api/auth/signup').send({ ...alice, password });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { code: 'VALIDATION_ERROR', message, details: [{ field: 'password', message }] } });
+    expect(await userCount()).toBe(0);
+  });
+
+  it('still says only "Password is required." for an empty password', async () => {
+    const res = await api(server).post('/api/auth/signup').send({ ...alice, password: '' });
+
+    expect(res.body.error.details).toEqual([{ field: 'password', message: 'Password is required.' }]);
+  });
+
+  it('does not apply at login: an account from before the rules logs in with its short password', async () => {
+    await pool.query(
+      `INSERT INTO users (username, email, display_name, password_hash) VALUES ('old_timer', 'old@example.test', 'old_timer', $1)`,
+      [await bcrypt.hash('abc', 10)],
+    );
+
+    const res = await api(server).post('/api/auth/login').send({ email: 'old@example.test', password: 'abc' });
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('POST /api/auth/login', () => {
   it('returns the user without a token, and starts a session, for correct credentials', async () => {
     const user = await signUp(server);
@@ -235,6 +284,20 @@ describe('POST /api/auth/login', () => {
     expect(wrongPassword.body).toEqual(unknownEmail.body);
     expect(unknownEmail.headers['set-cookie']).toBeUndefined();
     expect(wrongPassword.headers['set-cookie']).toBeUndefined();
+  });
+
+  // Audit §7.6: an unknown email used to answer at once, a wrong password only after
+  // bcrypt's work, so the response time told which emails have accounts.
+  it('runs one bcrypt comparison for an unknown email too, against a hash of the same cost', async () => {
+    const compare = vi.spyOn(bcrypt, 'compare');
+
+    const res = await api(server).post('/api/auth/login').send({ email: 'nobody@example.test', password: 'password123' });
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.' } });
+    expect(compare).toHaveBeenCalledOnce();
+    // $2b$10$: bcrypt at cost 10, the cost of every stored password hash (SALT_ROUNDS).
+    expect(compare).toHaveBeenCalledWith('password123', expect.stringMatching(/^\$2b\$10\$/));
   });
 
   it('normalizes the email the same way as signup before the lookup', async () => {
