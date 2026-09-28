@@ -1,6 +1,6 @@
 # Relay — Phase 2 Implementation Plan
 
-**Status:** 🚧 **Approved, in progress** on the `phase-2` branch (draft PR #2). M0–M2 are done (2026-09-28).
+**Status:** 🚧 **Approved, in progress** on the `phase-2` branch (draft PR #2). M0–M3 are done (2026-09-28).
 **History:** approved 2026-09-28; the maintainer's decisions on the open questions are recorded in [§16](#16-decisions-confirmed-at-approval).
 **Scope source:** `docs/v2-design.md` (§6 security model, §8 deployment, §9 Phase 2; decisions D3, D4, D15, D17), the deferred list in `docs/phase-0-implementation-plan.md` §15, and the handoff in `docs/phase-1-implementation-plan.md` §16.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
@@ -190,7 +190,7 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - The test helpers send the allowed `Origin` and JSON by default.
 
 **Definition of done**
-- [ ] Every state-changing request and every socket handshake is checked against the allowed origin.
+- [x] Every state-changing request and every socket handshake is checked against the allowed origin. *(`test/security.test.ts`; in headless Chrome, a page on `localhost:5555`, which is same-site and so gets the session cookie, had its `text/plain` fetch and form post refused with 403 and its WebSocket refused, while the app kept working.)*
 
 ---
 
