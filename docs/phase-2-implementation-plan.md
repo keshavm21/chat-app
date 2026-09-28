@@ -1,6 +1,6 @@
 # Relay — Phase 2 Implementation Plan
 
-**Status:** 🚧 **Approved, in progress** on the `phase-2` branch (draft PR #2). M0–M4 are done (2026-09-28).
+**Status:** 🚧 **Approved, in progress** on the `phase-2` branch (draft PR #2). M0–M5 are done (2026-09-28); M5's Vercel redirect and README link wait for the Render URL.
 **History:** approved 2026-09-28; the maintainer's decisions on the open questions are recorded in [§16](#16-decisions-confirmed-at-approval).
 **Scope source:** `docs/v2-design.md` (§6 security model, §8 deployment, §9 Phase 2; decisions D3, D4, D15, D17), the deferred list in `docs/phase-0-implementation-plan.md` §15, and the handoff in `docs/phase-1-implementation-plan.md` §16.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
@@ -239,6 +239,8 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - Express serves `client/dist`: hashed `/assets/*` with a long cache, `index.html` with `no-cache`, and `index.html` for any other `GET` outside `/api` and `/socket.io` (this replaces the Vercel rewrite).
 - The client uses relative URLs when `VITE_API_URL` is unset (Axios `baseURL` empty, `io()` without a URL). `vite.config` proxies `/api` and `/socket.io` (with WebSockets) to `localhost:5001`, so development has the same single origin as production.
 - With one origin everywhere, the `cors` middleware and Socket.io's `cors` option are removed. The allowed origin (M3) is the app's public URL, still read from `CLIENT_URL`.
+- *Done in M5:* `VITE_API_URL` is no longer read at all. Without CORS, an API on another origin cannot work, and a leftover `VITE_API_URL=http://localhost:5001` in `client/.env.local` would have quietly broken development.
+- *Found in M3, decided at M5 (§16, decision 7):* Socket.io uses the WebSocket transport only, on the server and the client. A same-origin HTTP long-polling handshake is a `GET`, which browsers send without `Origin`, so the M3 handshake check would refuse it; a WebSocket handshake always carries `Origin`.
 - Render builds both projects (settings in §15). The Vercel project becomes a redirect to the Render URL (a `redirects` rule in `client/vercel.json`) or is removed. The README's demo link changes.
 - Tests, against a small fixture directory so that the server tests need no client build: `/chat` returns `index.html`, `/api/unknown` still returns the JSON 404, and an asset is served with its cache header.
 
@@ -246,9 +248,9 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - The production build runs locally with `NODE_ENV=production`, the client served by Express. In headless Chrome, login sets `__Host-relay_session` (Chrome treats `localhost` as a secure context), a reload keeps you logged in, and the socket connects.
 
 **Definition of done**
-- [ ] The chosen topology works locally in production mode.
-- [ ] `sslmode=verify-full` is enforced for non-local databases.
-- [ ] The release runbook (§15) is reviewed and ready.
+- [x] The chosen topology works locally in production mode. *(`test/spa.test.ts`; the production build with `NODE_ENV=production` in headless Chrome: `__Host-relay_session` with `HttpOnly`, `Secure` and `SameSite=Lax`, one origin for every request, the socket over WebSocket, a reload of `/chat` still logged in, `index.html` `no-cache` and hashed assets immutable. Development through the Vite proxy works too.)*
+- [x] `sslmode=verify-full` is enforced for non-local databases. *(`test/env.test.ts`.)*
+- [ ] The release runbook (§15) is reviewed and ready. *(Reviewed: steps 1–6 match the code. Waiting for the Render URL, needed for the Vercel redirect in `client/vercel.json` (step 7) and the README's demo link.)*
 
 ---
 
@@ -333,3 +335,4 @@ Confirmed by the maintainer on 2026-09-28. Relay is a portfolio project, not a c
 | 4 | **Password rules for existing accounts:** at signup only, or also force existing users with shorter passwords to reset (there is no reset flow) | **Signup only.** Existing accounts keep working. |
 | 5 | **Defaults:** sessions with a 30-day absolute limit, a 7-day idle timeout, `last_seen_at` hourly and a sweep every 5 minutes; 10 failed logins per 15 minutes per IP and email; 5 signups per hour per IP | **As drafted, except 20 signups per hour per IP.** Everyone on one network (a class, a career fair) shares one public IP, so a demo to a group would hit 5 quickly. The login limit is per email as well, so it is unaffected. |
 | 6 | **Logout scope:** this session only, or every session of the user | **This session only** (design §6). "Log out everywhere" belongs to the later session UI (D11). |
+| 7 | **Socket transport** (found in M3, decided before M5): browsers send no `Origin` on a same-origin polling `GET`, which the handshake check refuses | **WebSocket only**, on the server and the client, so every handshake carries `Origin` and the strict check stays. Polling is not needed on one Render instance. |
