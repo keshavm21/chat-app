@@ -86,7 +86,9 @@ describe('the Origin check on state-changing requests', () => {
     expect(me.body).toEqual({ user: alice.user });
   });
 
-  it("answers CORS preflights for the app's origin only", async () => {
+  // The client is served from the API's own origin, so no other origin is ever allowed:
+  // a browser on another site cannot pass a preflight or read a response.
+  it('sends no CORS headers, whatever the origin', async () => {
     for (const origin of [allowedOrigin, 'https://evil.example']) {
       const res = await request(server.httpServer)
         .options('/api/auth/login')
@@ -94,10 +96,8 @@ describe('the Origin check on state-changing requests', () => {
         .set('Access-Control-Request-Method', 'POST')
         .set('Access-Control-Request-Headers', 'content-type');
 
-      expect(res.status).toBe(204);
-      // Always the app's origin, so a browser on another site refuses to send the request.
-      expect(res.get('Access-Control-Allow-Origin')).toBe(allowedOrigin);
-      expect(res.get('Access-Control-Allow-Credentials')).toBe('true');
+      expect(res.get('Access-Control-Allow-Origin'), origin).toBeUndefined();
+      expect(res.get('Access-Control-Allow-Credentials')).toBeUndefined();
     }
   });
 });
@@ -160,22 +160,17 @@ describe('the Origin check on the socket handshake', () => {
     expect((await connectSocket(server.url, alice.cookie)).connected).toBe(true); // the app's origin gets in
   });
 
-  // Browsers start with HTTP long-polling; the handshake is the first GET.
+  // A same-origin polling handshake is a GET, which browsers send without Origin, so the
+  // server accepts WebSocket handshakes only: those always carry it.
   it.each([
+    ["the app's origin", allowedOrigin],
     ['another origin', 'https://evil.example'],
     ['no Origin', undefined],
-  ])('refuses a polling handshake from %s with 403', async (_case, origin) => {
+  ])('refuses an HTTP long-polling handshake from %s', async (_case, origin) => {
     const res = await from(origin, 'get', '/socket.io/?EIO=4&transport=polling');
 
-    expect(res.status).toBe(403);
-    expect(JSON.parse(res.text)).toEqual({ code: 4, message: 'Origin not allowed' });
-  });
-
-  it("accepts a polling handshake from the app's origin", async () => {
-    const res = await from(allowedOrigin, 'get', '/socket.io/?EIO=4&transport=polling');
-
-    expect(res.status).toBe(200);
-    expect(res.text).toMatch(/^0\{"sid":/);
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.text)).toEqual({ code: 0, message: 'Transport unknown' });
   });
 });
 
