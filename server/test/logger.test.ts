@@ -4,7 +4,7 @@ import express from 'express';
 import pino from 'pino';
 import { pinoHttp } from 'pino-http';
 import request from 'supertest';
-import { loggerOptions } from '../lib/logger.js';
+import { httpLoggerOptions, loggerOptions } from '../lib/logger.js';
 
 /** A logger with the app's real options (at level info) whose JSON lines are captured. */
 function capturingLogger() {
@@ -62,6 +62,25 @@ describe('logger redaction', () => {
     expect(lines.join('\n')).not.toContain('SECRET-SESSION-TOKEN');
     const completed = lines.map((line) => JSON.parse(line)).find((e) => e.msg === 'request completed');
     expect(completed.res.headers['set-cookie']).toBe('[Redacted]');
+  });
+
+  // The release checks TRUST_PROXY in these lines (plan §15, step 6).
+  it.each([
+    [0, '::ffff:127.0.0.1'], // the socket's address: the header is ignored
+    [1, '203.0.113.7'], // the address the one trusted proxy appended
+  ])('logs the client IP as Express sees it, with trust proxy %s', async (trustProxy, ip) => {
+    const { logger, lines } = capturingLogger();
+    const app = express();
+    app.set('trust proxy', trustProxy);
+    app.use(pinoHttp({ logger, ...httpLoggerOptions }));
+    app.get('/api/ping', (_req, res) => {
+      res.json({ ok: true });
+    });
+
+    await request(app).get('/api/ping').set('X-Forwarded-For', '203.0.113.7');
+
+    const completed = lines.map((line) => JSON.parse(line)).find((e) => e.msg === 'request completed');
+    expect(completed.ip).toBe(ip);
   });
 
   it('hides a Postgres error DETAIL, which can contain row values, but keeps the message', () => {

@@ -10,15 +10,24 @@ import authRoutes      from './routes/auth.js';
 import messagesRoutes  from './routes/messages.js';
 import socketHandler   from './socket/socketHandler.js';
 import { startSessionSweep } from './socket/sessionSweep.js';
+import { config }       from './config/env.js';
 import { allowedOrigin, allowSocketHandshake, requireAllowedOrigin, requireJsonBody } from './http/csrf.js';
+import { createRateLimiters } from './http/rateLimits.js';
 import { notFound }     from './http/notFound.js';
 import { errorHandler } from './http/errorHandler.js';
-import { logger }       from './lib/logger.js';
+import { RATE_LIMITS }  from './lib/limits.js';
+import { httpLoggerOptions, logger } from './lib/logger.js';
 
-// Builds the Express app, HTTP server and Socket.io server without listening, and
-// starts the session sweep. index.js starts it for real; tests create their own instances.
-export function createApp() {
+// Builds the Express app, HTTP server and Socket.io server without listening, and starts
+// the timers that stopTimers() ends. index.js starts it for real; tests create their own
+// instances, with their own `rateLimits` (default RATE_LIMITS, lib/limits.ts) and
+// `trustProxy` (default TRUST_PROXY).
+export function createApp({ rateLimits = RATE_LIMITS, trustProxy = config.trustProxy } = {}) {
   const app = express();
+
+  // How many proxies' X-Forwarded-For to believe for req.ip, which the request logs and
+  // the rate limits use. 0 (the default) believes none, so a client cannot pick its IP.
+  app.set('trust proxy', trustProxy);
 
   // ── HTTP server + Socket.io ──────────────────────────────────────────────────
   // Socket.io needs a raw http.Server — it can't be attached to app directly.
@@ -39,7 +48,7 @@ export function createApp() {
 
   // ── Express app ──────────────────────────────────────────────────────────────
   // First, so every request (including CORS preflights and errors) gets one log line.
-  app.use(pinoHttp({ logger }));
+  app.use(pinoHttp({ logger, ...httpLoggerOptions }));
   // Security headers on every response, errors included; removes X-Powered-By. The
   // Content Security Policy belongs to the SPA and comes later (Phase 8).
   app.use(helmet({ contentSecurityPolicy: false }));
@@ -52,7 +61,10 @@ export function createApp() {
   app.use('/api', requireAllowedOrigin, requireJsonBody);
   app.use(express.json());
 
-  app.use('/api/auth',     authRoutes(io));
+  // Login and signup limits (429 over them), with fresh counters for each app.
+  const rateLimiters = createRateLimiters(rateLimits);
+
+  app.use('/api/auth',     authRoutes(io, rateLimiters));
   app.use('/api/messages', messagesRoutes);
 
   app.get('/api/ping', (_req, res) => res.json({ message: 'Server is alive' }));
@@ -63,8 +75,15 @@ export function createApp() {
 
   // ── Session sweep ────────────────────────────────────────────────────────────
   // Every 5 minutes, disconnects the sockets of ended sessions and deletes their rows.
-  // Whoever closes the server stops it first: index.js's shutdown, the tests' close().
   const sessionSweep = startSessionSweep(io);
 
-  return { app, httpServer, io, sessionSweep };
+  // Stops every timer the app started (the session sweep, waiting for a run in progress,
+  // and the rate limiters' cleanup). Whoever closes the server calls it first:
+  // index.js's shutdown, the tests' close().
+  async function stopTimers() {
+    rateLimiters.stop();
+    await sessionSweep.stop();
+  }
+
+  return { app, httpServer, io, stopTimers };
 }

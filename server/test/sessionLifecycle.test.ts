@@ -129,11 +129,14 @@ describe('sweepSessions', () => {
 });
 
 describe('the sweep timer', () => {
-  // Only the intervals are faked: the sweep's own timer is the one setInterval of the app.
+  // Only the intervals are faked. The app has three: the sweep's, and the cleanup timers
+  // of the two rate limiters' stores (http/rateLimits.ts).
+  const APP_INTERVALS = 3;
+
   it('sweeps every 5 minutes, and close() leaves no timer behind', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const own = await startServer();
-    expect(vi.getTimerCount()).toBe(1);
+    expect(vi.getTimerCount()).toBe(APP_INTERVALS);
     const alice = await signUp(own);
     const socket = await connectSocket(own.url, alice.cookie);
     await deleteSession(alice.cookie);
@@ -157,7 +160,7 @@ describe('the sweep timer', () => {
     await vi.advanceTimersByTimeAsync(SESSION_SWEEP_INTERVAL_MS);
 
     expect(await logged).toEqual([{ err: expect.objectContaining({ message: 'db down' }) }, 'Session sweep failed']);
-    expect(vi.getTimerCount()).toBe(1);
+    expect(vi.getTimerCount()).toBe(APP_INTERVALS);
     await own.close();
   });
 });

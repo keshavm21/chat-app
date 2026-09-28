@@ -1,5 +1,6 @@
 import express from 'express';
 import bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import pool from '../db/connection.js';
 import { withTransaction } from '../db/transaction.js';
 import { AppError, ErrorCode } from '../lib/errors.js';
@@ -14,6 +15,10 @@ import { createSession, deleteSession } from '../repositories/sessions.js';
 const SALT_ROUNDS = 10;
 const PG_UNIQUE_VIOLATION = '23505';
 
+// What login compares a password with when the email has no account: a hash of a random
+// password (nothing matches it) at the same cost as real ones, made once at startup.
+const dummyPasswordHash = bcrypt.hash(randomBytes(32).toString('hex'), SALT_ROUNDS);
+
 // Every signup and login starts a new session: a session cookie the request already
 // carries is never reused, so a cookie planted by someone else cannot become a
 // logged-in session. Returns the token for the cookie; the database gets its hash.
@@ -23,12 +28,16 @@ async function startSession(db, req, userId) {
   return token;
 }
 
-/** The /api/auth routes. They take `io` because logout disconnects the session's sockets. */
-export default function authRoutes(io) {
+/**
+ * The /api/auth routes. They take `io`, because logout disconnects the session's sockets,
+ * and the app's rate limiters (http/rateLimits.ts), which run before validation, so
+ * invalid attempts count too.
+ */
+export default function authRoutes(io, rateLimiters) {
   const router = express.Router();
 
   // ─── POST /api/auth/signup ────────────────────────────────────────────────────
-  router.post('/signup', async (req, res, next) => {
+  router.post('/signup', rateLimiters.signup, async (req, res, next) => {
     const parsed = signupSchema.safeParse(req.body);
     if (!parsed.success) return next(validationError(parsed.error));
     // Trimmed and lowercased, so uniqueness (the pre-check and the constraints) ignores case.
@@ -66,7 +75,7 @@ export default function authRoutes(io) {
   });
 
   // ─── POST /api/auth/login ─────────────────────────────────────────────────────
-  router.post('/login', async (req, res, next) => {
+  router.post('/login', rateLimiters.login, async (req, res, next) => {
     const parsed = loginSchema.safeParse(req.body);
     if (!parsed.success) return next(validationError(parsed.error));
     // The email is normalized the same way as at signup.
@@ -75,15 +84,12 @@ export default function authRoutes(io) {
     try {
       const user = await findUserByEmail(pool, email);
 
-      // ⚠️  Intentionally same error for "not found" and "wrong password"
-      //     — prevents attackers from discovering which emails are registered
-      if (!user) {
-        return next(new AppError(401, ErrorCode.INVALID_CREDENTIALS, 'Invalid email or password.'));
-      }
+      // ⚠️  Intentionally the same answer, after the same work (one bcrypt comparison),
+      //     for "not found" and "wrong password": neither the error nor the response
+      //     time reveals which emails are registered (audit §7.6).
+      const isMatch = await bcrypt.compare(password, user ? user.passwordHash : await dummyPasswordHash);
 
-      const isMatch = await bcrypt.compare(password, user.passwordHash);
-
-      if (!isMatch) {
+      if (!user || !isMatch) {
         return next(new AppError(401, ErrorCode.INVALID_CREDENTIALS, 'Invalid email or password.'));
       }
 

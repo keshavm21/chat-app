@@ -3,13 +3,26 @@
 // `next(validationError(result.error))`.
 import { z } from 'zod';
 import { AppError, ErrorCode } from '../lib/errors.js';
-import { EMAIL_MAX_LENGTH, USERNAME_PATTERN } from '../lib/limits.js';
+import { EMAIL_MAX_LENGTH, PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH, USERNAME_PATTERN } from '../lib/limits.js';
 
 const body = { error: 'Request body must be a JSON object.' };
 
 // Emails are compared and stored trimmed and lowercased.
 const email = z.string({ error: 'Email is required.' }).trim().toLowerCase();
 const password = z.string({ error: 'Password is required.' }).min(1, 'Password is required.');
+
+// A new password (signup only; login keeps `password`, so older, shorter passwords still
+// work). Rejected rather than cut when over bcrypt's 72 bytes, which it would silently
+// ignore. The checks exclude each other, so a password gets at most one message.
+const newPassword = password
+  .refine(
+    (value) => value === '' || [...value].length >= PASSWORD_MIN_LENGTH,
+    `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`,
+  )
+  .refine(
+    (value) => Buffer.byteLength(value, 'utf8') <= PASSWORD_MAX_BYTES,
+    `Password must be at most ${PASSWORD_MAX_BYTES} bytes; accented letters and emoji take 2–4 bytes each.`,
+  );
 
 export const signupSchema = z
   .object(
@@ -26,7 +39,7 @@ export const signupSchema = z
           .email('Email must be a valid email address.')
           .max(EMAIL_MAX_LENGTH, `Email must be at most ${EMAIL_MAX_LENGTH} characters.`),
       ),
-      password,
+      password: newPassword,
     },
     body,
   )

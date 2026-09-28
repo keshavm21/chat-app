@@ -100,9 +100,9 @@ export default function Signup() {
                 name="password"
                 value={form.password}
                 onChange={handleChange}
-                placeholder="At least 6 characters"
+                placeholder="At least 8 characters"
                 required
-                minLength={6}
+                minLength={8}
                 className="w-full px-4 py-2.5 bg-[#0d1117] border border-[#1f2937] rounded-xl text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 transition-colors text-sm"
               />
             </div>
