@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import request from 'supertest';
 import pool from '../db/connection.js';
-import { signUp, startServer, type TestServer } from './helpers.js';
+import { api, signUp, startServer, type TestServer } from './helpers.js';
 
 let server: TestServer;
 
@@ -16,8 +15,8 @@ afterAll(async () => {
 describe('GET /api/messages', () => {
   it('returns 401 without a valid session', async () => {
     for (const res of [
-      await request(server.httpServer).get('/api/messages'),
-      await request(server.httpServer).get('/api/messages').set('Cookie', 'relay_session=unknown-token'),
+      await api(server).get('/api/messages'),
+      await api(server).get('/api/messages').set('Cookie', 'relay_session=unknown-token'),
     ]) {
       expect(res.status).toBe(401);
       expect(res.body).toEqual({
@@ -29,7 +28,7 @@ describe('GET /api/messages', () => {
   it('returns an empty list when there are no messages', async () => {
     const user = await signUp(server);
 
-    const res = await request(server.httpServer)
+    const res = await api(server)
       .get('/api/messages')
       .set('Cookie', user.cookie);
 
@@ -52,7 +51,7 @@ describe('GET /api/messages', () => {
       [user.user.id, rows[0].id],
     );
 
-    const res = await request(server.httpServer)
+    const res = await api(server)
       .get('/api/messages')
       .set('Cookie', user.cookie);
 

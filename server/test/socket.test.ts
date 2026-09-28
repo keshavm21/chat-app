@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import request from 'supertest';
 import pool from '../db/connection.js';
 import { logger } from '../lib/logger.js';
 import {
+  api,
   connectSocket,
   disconnectAllSockets,
   nextEvent,
@@ -94,7 +94,7 @@ describe('new_message', () => {
     );
     expect(rows).toEqual([{ name: 'general', seq: 1, author_id: alice.user.id, content: 'hello bob' }]);
 
-    const history = await request(server.httpServer)
+    const history = await api(server)
       .get('/api/messages')
       .set('Cookie', bob.cookie);
     expect(history.body.messages).toEqual([received]);

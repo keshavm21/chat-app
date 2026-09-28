@@ -1,11 +1,11 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import request from 'supertest';
 import type { Socket } from 'socket.io-client';
 import pool from '../db/connection.js';
 import { SESSION_SWEEP_INTERVAL_MS } from '../lib/limits.js';
 import { logger } from '../lib/logger.js';
 import { sweepSessions } from '../socket/sessionSweep.js';
 import {
+  api,
   connectSocket,
   disconnectAllSockets,
   nextEvent,
@@ -36,7 +36,7 @@ afterAll(async () => {
 });
 
 async function login(user: { email: string; password: string }) {
-  return sessionCookieOf(await request(server.httpServer).post('/api/auth/login').send(user).expect(200));
+  return sessionCookieOf(await api(server).post('/api/auth/login').send(user).expect(200));
 }
 
 async function deleteSession(cookie: string) {
@@ -59,7 +59,7 @@ describe('logout', () => {
     const otherDevice = await connectSocket(server.url, otherSession);
 
     const disconnected = Promise.all([nextEvent(tab1, 'disconnect'), nextEvent(tab2, 'disconnect')]);
-    await request(server.httpServer).post('/api/auth/logout').set('Cookie', alice.cookie).expect(204);
+    await api(server).post('/api/auth/logout').send({}).set('Cookie', alice.cookie).expect(204);
 
     expect(await disconnected).toEqual(['io server disconnect', 'io server disconnect']);
     await roundTrip(otherDevice, 'still connected');

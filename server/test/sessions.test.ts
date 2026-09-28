@@ -7,7 +7,7 @@ import pool from '../db/connection.js';
 import { logger } from '../lib/logger.js';
 import { SESSION_MAX_AGE_MS, USER_AGENT_MAX_LENGTH } from '../lib/limits.js';
 import { sessionCookieFor } from '../lib/sessions.js';
-import { sessionCookieOf, sessionHashOf, setSessionAgo, signUp, startServer, type TestServer } from './helpers.js';
+import { api, sessionCookieOf, sessionHashOf, setSessionAgo, signUp, startServer, type TestServer } from './helpers.js';
 
 // Server-side sessions (docs/v2-design.md §6): expiry is tested by moving the
 // session's timestamps in the database, never by waiting.
@@ -37,16 +37,16 @@ const unknownSession = () => `relay_session=${randomBytes(32).toString('base64ur
 
 /** GET /api/auth/me with a session cookie (`name=value`), or with none. */
 function me(cookie?: string) {
-  const req = request(server.httpServer).get('/api/auth/me');
+  const req = api(server).get('/api/auth/me');
   return cookie === undefined ? req : req.set('Cookie', cookie);
 }
 
 function login(user: { email: string; password: string }) {
-  return request(server.httpServer).post('/api/auth/login').send({ email: user.email, password: user.password });
+  return api(server).post('/api/auth/login').send({ email: user.email, password: user.password });
 }
 
 function logout(cookie?: string) {
-  const req = request(server.httpServer).post('/api/auth/logout');
+  const req = api(server).post('/api/auth/logout').send({});
   return cookie === undefined ? req : req.set('Cookie', cookie);
 }
 
@@ -57,7 +57,7 @@ async function session(cookie: string) {
 
 describe('the session cookie', () => {
   it('is set by signup and login: httpOnly, SameSite=Lax, for 30 days, and never in the body', async () => {
-    const signup = await request(server.httpServer).post('/api/auth/signup').send(credentials);
+    const signup = await api(server).post('/api/auth/signup').send(credentials);
     const loggedIn = await login(credentials);
 
     for (const res of [signup, loggedIn]) {

@@ -4,6 +4,7 @@ import { parseSetCookie } from 'cookie';
 import { io as ioClient, type Socket } from 'socket.io-client';
 import { createApp } from '../app.js';
 import pool from '../db/connection.js';
+import { allowedOrigin } from '../http/csrf.js';
 import { hashSessionToken, sessionCookie } from '../lib/sessions.js';
 
 /** Starts the real app (Express + Socket.io + the session sweep) on a random free port. */
@@ -26,6 +27,19 @@ export async function startServer() {
 }
 
 export type TestServer = Awaited<ReturnType<typeof startServer>>;
+
+/**
+ * supertest against a test server that sends the app's Origin, as the browser app does:
+ * the server refuses state-changing requests without it (403). Bodies are JSON: use
+ * `.send(object)`, and `.send({})` when there is nothing to send, like the app (else 415).
+ */
+export function api(server: TestServer) {
+  const agent = request(server.httpServer);
+  return {
+    get: (url: string) => agent.get(url).set('Origin', allowedOrigin),
+    post: (url: string) => agent.post(url).set('Origin', allowedOrigin),
+  };
+}
 
 /**
  * The session cookie a response sets, as the `name=value` a later request sends in
@@ -61,7 +75,7 @@ export async function signUp(server: TestServer) {
     email: `user${userCount}@example.test`,
     password: 'password123',
   };
-  const res = await request(server.httpServer).post('/api/auth/signup').send(credentials).expect(201);
+  const res = await api(server).post('/api/auth/signup').send(credentials).expect(201);
   return {
     ...credentials,
     /** For `.set('Cookie', cookie)` and connectSocket(). */
@@ -72,11 +86,18 @@ export async function signUp(server: TestServer) {
 
 const openSockets = new Set<Socket>();
 
-/** Connects a Socket.io client with a session cookie (or none); rejects with the server's connect_error. */
-export function connectSocket(url: string, cookie?: string): Promise<Socket> {
+/**
+ * Connects a Socket.io client over WebSocket with a session cookie (or none), from the
+ * app's origin unless `origin` says otherwise (null: no Origin header). Rejects with the
+ * server's connect_error.
+ */
+export function connectSocket(url: string, cookie?: string, { origin = allowedOrigin }: { origin?: string | null } = {}): Promise<Socket> {
   const socket = ioClient(url, {
-    // The handshake carries the cookie, as a browser's would.
-    extraHeaders: cookie === undefined ? {} : { Cookie: cookie },
+    // The handshake carries the cookie and the Origin, as a browser's would.
+    extraHeaders: {
+      ...(origin === null ? {} : { Origin: origin }),
+      ...(cookie === undefined ? {} : { Cookie: cookie }),
+    },
     transports: ['websocket'],
     reconnection: false,
     forceNew: true,
