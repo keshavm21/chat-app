@@ -1,10 +1,8 @@
 import axios from 'axios';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5001',
-  // Sends the httpOnly session cookie. The API is on another origin (in development,
-  // another port), so the browser only sends cookies when asked to.
-  withCredentials: true,
-});
+// Requests go to the page's own origin: Express serves the client in production, and
+// Vite proxies /api to the server in development (vite.config.js). Same-origin requests
+// carry the httpOnly session cookie by themselves.
+const api = axios.create();
 
 export default api;

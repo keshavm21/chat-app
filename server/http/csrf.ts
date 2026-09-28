@@ -43,6 +43,8 @@ export const requireJsonBody: RequestHandler = (req, _res, next) => {
  * Socket.io's allowRequest: refuses a connection whose handshake does not come from the
  * app's origin. CORS does not protect WebSockets, and the browser sends the session
  * cookie with them, so without this another site could open a socket as the user.
+ * A missing Origin is refused too: the server accepts WebSocket handshakes only, and
+ * browsers always send Origin with those, same-origin ones included.
  */
 export function allowSocketHandshake(req: IncomingMessage, callback: (error: string | null, success: boolean) => void) {
   const { origin } = req.headers;

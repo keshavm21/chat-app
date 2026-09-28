@@ -1,9 +1,10 @@
 // server/app.js
 import express          from 'express';
-import cors             from 'cors';
 import helmet           from 'helmet';
 import { pinoHttp }     from 'pino-http';
 import { createServer } from 'http';
+import { basename, dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { Server }       from 'socket.io';
 
 import authRoutes      from './routes/auth.js';
@@ -11,18 +12,24 @@ import messagesRoutes  from './routes/messages.js';
 import socketHandler   from './socket/socketHandler.js';
 import { startSessionSweep } from './socket/sessionSweep.js';
 import { config }       from './config/env.js';
-import { allowedOrigin, allowSocketHandshake, requireAllowedOrigin, requireJsonBody } from './http/csrf.js';
+import { allowSocketHandshake, requireAllowedOrigin, requireJsonBody } from './http/csrf.js';
 import { createRateLimiters } from './http/rateLimits.js';
+import { serveClient }  from './http/spa.js';
 import { notFound }     from './http/notFound.js';
 import { errorHandler } from './http/errorHandler.js';
 import { RATE_LIMITS }  from './lib/limits.js';
 import { httpLoggerOptions, logger } from './lib/logger.js';
 
+// The client's production build. The compiled server runs from server/dist/, one level
+// deeper than the source.
+const here = dirname(fileURLToPath(import.meta.url));
+const CLIENT_DIST = resolve(here, basename(here) === 'dist' ? '../..' : '..', 'client/dist');
+
 // Builds the Express app, HTTP server and Socket.io server without listening, and starts
 // the timers that stopTimers() ends. index.js starts it for real; tests create their own
-// instances, with their own `rateLimits` (default RATE_LIMITS, lib/limits.ts) and
-// `trustProxy` (default TRUST_PROXY).
-export function createApp({ rateLimits = RATE_LIMITS, trustProxy = config.trustProxy } = {}) {
+// instances, with their own `rateLimits` (default RATE_LIMITS, lib/limits.ts),
+// `trustProxy` (default TRUST_PROXY) and `clientDist` (default client/dist).
+export function createApp({ rateLimits = RATE_LIMITS, trustProxy = config.trustProxy, clientDist = CLIENT_DIST } = {}) {
   const app = express();
 
   // How many proxies' X-Forwarded-For to believe for req.ip, which the request logs and
@@ -35,12 +42,10 @@ export function createApp({ rateLimits = RATE_LIMITS, trustProxy = config.trustP
   const httpServer = createServer(app);
 
   const io = new Server(httpServer, {
-    cors: {
-      origin: allowedOrigin,
-      methods: ['GET', 'POST'],
-      credentials: true,
-    },
-    // CORS does not cover WebSockets: every handshake must come from the app's origin.
+    // WebSocket only, no HTTP long-polling: a WebSocket handshake always carries the
+    // browser's Origin, while a same-origin polling GET carries none.
+    transports: ['websocket'],
+    // Every handshake must come from the app's origin (CORS does not cover WebSockets).
     allowRequest: allowSocketHandshake,
   });
 
@@ -52,12 +57,9 @@ export function createApp({ rateLimits = RATE_LIMITS, trustProxy = config.trustP
   // Security headers on every response, errors included; removes X-Powered-By. The
   // Content Security Policy belongs to the SPA and comes later (Phase 8).
   app.use(helmet({ contentSecurityPolicy: false }));
-  app.use(cors({
-    origin: allowedOrigin,
-    credentials: true,
-  }));
-  // CSRF: a state-changing /api request must come from the app's origin (else 403) and
-  // carry JSON (else 415). Both run before the body is parsed; preflights never get here.
+  // No CORS: the client is served from this origin (below), so no other site is ever
+  // allowed to read a response. CSRF: a state-changing /api request must come from the
+  // app's origin (else 403) and carry JSON (else 415), checked before the body is parsed.
   app.use('/api', requireAllowedOrigin, requireJsonBody);
   app.use(express.json());
 
@@ -69,8 +71,17 @@ export function createApp({ rateLimits = RATE_LIMITS, trustProxy = config.trustP
 
   app.get('/api/ping', (_req, res) => res.json({ message: 'Server is alive' }));
 
-  // Must come after every route: unmatched /api requests → 404, then all errors → JSON envelope.
+  // Must come after every route: unmatched /api requests → 404.
   app.use('/api', notFound);
+
+  // The client, for every other GET. Without a build (development) the API stands alone.
+  if (serveClient(app, clientDist)) {
+    logger.info({ clientDist }, 'Serving the client build');
+  } else {
+    logger.info({ clientDist }, 'No client build found; serving the API only');
+  }
+
+  // Last: all errors → JSON envelope.
   app.use(errorHandler);
 
   // ── Session sweep ────────────────────────────────────────────────────────────

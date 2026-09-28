@@ -17,9 +17,10 @@ const TEST_RATE_LIMITS: RateLimits = {
 
 /**
  * Starts the real app (Express + Socket.io + its timers) on a random free port, with
- * createApp's options: `rateLimits` (default: high enough never to matter) and `trustProxy`.
+ * createApp's options: `rateLimits` (default: high enough never to matter), `trustProxy`
+ * and `clientDist` (spa.test.ts uses a fixture build).
  */
-export async function startServer(options: { rateLimits?: RateLimits; trustProxy?: number } = {}) {
+export async function startServer(options: { rateLimits?: RateLimits; trustProxy?: number; clientDist?: string } = {}) {
   const { app, httpServer, io, stopTimers } = createApp({ rateLimits: TEST_RATE_LIMITS, ...options });
   await new Promise<void>((resolve) => httpServer.listen(0, resolve));
   const { port } = httpServer.address() as AddressInfo;

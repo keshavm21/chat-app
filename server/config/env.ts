@@ -23,6 +23,28 @@ const blankAsUnset = <T extends z.ZodType>(schema: T) =>
 const port = z.coerce.number().int().min(1).max(65535);
 const DB_VARS = ['DB_USER', 'DB_HOST', 'DB_NAME', 'DB_PASSWORD'] as const;
 
+// Hosts that need no TLS: the local Docker database ('' is a Unix socket).
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '']);
+
+/**
+ * What is wrong with a DATABASE_URL, if anything. A database that is not local must say
+ * sslmode=verify-full, so the connection checks the server's certificate and host name
+ * (pg treats sslmode=require the same today, but has announced that it will stop).
+ */
+function databaseUrlProblem(url: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'Must be a connection URL, e.g. postgres://user:password@host/database';
+  }
+  if (LOCAL_DB_HOSTS.has(parsed.hostname)) return undefined;
+  if (parsed.searchParams.get('sslmode') !== 'verify-full') {
+    return 'A database that is not local must use sslmode=verify-full';
+  }
+  return undefined;
+}
+
 const schema = z
   .object({
     NODE_ENV:     blankAsUnset(z.enum(['development', 'production', 'test']).default('development')),
@@ -41,7 +63,11 @@ const schema = z
   })
   .superRefine((env, ctx) => {
     // DATABASE_URL takes precedence; otherwise every DB_* connection variable is needed.
-    if (env.DATABASE_URL) return;
+    if (env.DATABASE_URL) {
+      const problem = databaseUrlProblem(env.DATABASE_URL);
+      if (problem) ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: problem });
+      return;
+    }
     const missing = DB_VARS.filter((name) => !env[name]);
     if (missing.length === DB_VARS.length) {
       ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: `Required (or set ${DB_VARS.join(', ')})` });

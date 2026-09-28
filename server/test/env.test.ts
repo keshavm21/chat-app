@@ -79,6 +79,30 @@ describe('parseEnv', () => {
     expect(error.message).not.toContain('SENSITIVE');
   });
 
+  it('requires sslmode=verify-full for a database that is not local, without showing the URL', () => {
+    const neon = 'postgres://relay:SECRET-PASSWORD@ep-example.eu-central-1.aws.neon.tech/relay';
+
+    for (const url of [neon, `${neon}?sslmode=require&channel_binding=require`, `${neon}?sslmode=disable`]) {
+      const error = configErrorFor({ DATABASE_URL: url });
+      expect(error.variables).toEqual(['DATABASE_URL']);
+      expect(error.issues).toEqual(['DATABASE_URL: A database that is not local must use sslmode=verify-full']);
+      expect(error.message).not.toContain('SECRET');
+    }
+    expect(parseEnv({ DATABASE_URL: `${neon}?sslmode=verify-full&channel_binding=require` }).database.url).toContain('verify-full');
+  });
+
+  it('lets a local database go without TLS', () => {
+    for (const host of ['localhost:5433', '127.0.0.1:5433', '[::1]:5433']) {
+      expect(() => parseEnv({ DATABASE_URL: `postgres://relay:relay@${host}/relay_dev?sslmode=disable` })).not.toThrow();
+    }
+  });
+
+  it('refuses a DATABASE_URL that is not a URL', () => {
+    expect(configErrorFor({ DATABASE_URL: 'not a url SENSITIVE' }).issues).toEqual([
+      'DATABASE_URL: Must be a connection URL, e.g. postgres://user:password@host/database',
+    ]);
+  });
+
   it('returns a frozen config', () => {
     const config = parseEnv(valid);
 
