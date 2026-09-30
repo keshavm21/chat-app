@@ -1,6 +1,6 @@
 # Relay — Phase 3 Implementation Plan: channels, DMs and launch
 
-**Status:** ✅ **Approved** (2026-09-30), with the maintainer's decisions in [§9](#9-decisions-confirmed-at-approval). **In progress:** M0 done (2026-09-30: draft PR #3, CI green, Vercel deployments of `phase-3` off); M1 implemented (2026-10-01), awaiting approval — see [§10](#10-progress-record).
+**Status:** ✅ **Approved** (2026-09-30), with the maintainer's decisions in [§9](#9-decisions-confirmed-at-approval). **In progress:** M0 done (2026-09-30: draft PR #3, CI green, Vercel deployments of `phase-3` off); M1 done (approved 2026-10-01); M2 implemented (2026-10-01), awaiting approval — see [§10](#10-progress-record).
 **Scope source:** `docs/v2-design.md` §9 (Phases 3, 4 and 8), cut down to the visible features, as the maintainer decided on 2026-09-30: Relay is a portfolio project, and it should be finished quickly. The handoff is `docs/phase-2-implementation-plan.md` §18.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
 
@@ -146,7 +146,8 @@ Confirmed by the maintainer on 2026-09-30.
 | Milestone | State | Notes |
 |---|---|---|
 | M0 — Branch | Done 2026-09-30 | `phase-3` from `phase-2` (`06bdb9c`); draft PR #3 `phase-3 → main`; CI green; `client/vercel.json` turns off Vercel deployments of the branch (GitHub shows none). |
-| M1 — Conversations on the server | Implemented 2026-10-01, awaiting approval | The REST API and rooms of §5; `GET /api/messages` and the global broadcast removed; the maintainer's four follow-up decisions (below); server tests 208 → 325, and 7 client unit tests. Details below. |
+| M1 — Conversations on the server | Done 2026-10-01 (approved with the decisions below) | The REST API and rooms of §5; `GET /api/messages` and the global broadcast removed; the maintainer's four follow-up decisions (below); server tests 208 → 325, and 7 client unit tests. Details below. |
+| M2 — Conversations in the client | Implemented 2026-10-01, awaiting approval | The §6 client, checked in headless Chrome as §6 asks; 28 client unit tests. Details below. |
 
 **Maintainer's decisions on M1** (2026-10-01):
 1. **Private channel names cannot be found through a 409.** Migration `0004` makes names unique among public channels only; private channels may share a name with each other or with a public channel. `#general` is therefore looked up by name and `visibility = 'public'`.
@@ -163,3 +164,13 @@ Confirmed by the maintainer on 2026-09-30.
 - **Connect race closed:** a membership that changes while a socket is still connecting is caught by a change counter, and the socket looks its memberships up again (until no change happens during the lookup).
 - **Not done (outside the plan):** message rate limits; zod schemas for socket payloads.
 - **Known issues:** a NUL character in a message or a login email reaches Postgres and fails as a 500 or "Failed to save message." (both from before Phase 3).
+
+**M2 notes:**
+- **Structure** (D9, no new libraries): `ChatProvider` holds the list, the timelines (a reducer keyed by conversation), typing and the socket; the rules are pure functions in `client/src/lib/chatState.ts` with unit tests under `node --test`. The layout route keeps the socket and sidebar mounted while the conversation changes.
+- **Sidebar:** channels (a lock for private ones) and DMs, each most recently active first, unread badges (none on the open conversation, which is marked read while the tab is visible), the online count, and "Browse channels", "New channel" and "New message". On narrow screens it is a drawer.
+- **Header:** the name and topic; "Add people" for a private channel's owner; "Leave" wherever the server allows it (not `#general`, a DM, or my own private channel), after a confirmation.
+- **Reconnect:** the list and the open conversation's latest page reload, merged by id; when the page does not connect to what is shown, what is older is dropped rather than left with a hole. Live messages that arrive while a page loads are kept.
+- **`/chat`** reopens the conversation last open in this browser (per user), else `#general`.
+- **Verified in headless Chrome** (three users): create a channel, another joins, messages and typing reach members only (the third user's socket received nothing of it); unread badges rise, clear, and stay cleared after a reload; a DM appears in the other user's sidebar with a badge; "Load older" pages back to seq 1; a private channel appears live when its owner adds someone, cannot be found by others, and can be left; the mobile drawer; a dropped connection catches up once, without duplicates; `/chat` reopens the last conversation; a refused handshake recovers without a reload. Found and fixed on the way: the typing indicator did not show in an empty conversation, and two sibling components with the same `key` left a stale message list on screen.
+- **Not done (outside the plan):** cross-tab read sync (another tab's badge clears on its next reconnect or reload), a member list, notifications.
+
