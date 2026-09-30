@@ -1,6 +1,6 @@
 # Relay — Phase 2 Implementation Plan
 
-**Status:** ✅ **Complete on the `phase-2` branch** (2026-09-28); **release pending**. Milestones M0–M6 are done and verified; the release runs by §15 when the maintainer decides. See [§17 Completion record](#17-completion-record) and [§18 Handoff](#18-handoff-to-phase-3).
+**Status:** ✅ **Complete on the `phase-2` branch** (2026-09-28). **Release postponed** (2026-09-30): the maintainer decided to release Phase 2 together with Phase 3 (`docs/phase-3-implementation-plan.md` §8), from a fresh database. Step 1 of §15 had already migrated production (only `0003`, harmless to Phase 1), and the production database password was reset after it leaked. See [§17 Completion record](#17-completion-record) and [§18 Handoff](#18-handoff-to-phase-3).
 **History:** approved 2026-09-28; the maintainer's decisions on the open questions are recorded in [§16](#16-decisions-confirmed-at-approval).
 **Scope source:** `docs/v2-design.md` (§6 security model, §8 deployment, §9 Phase 2; decisions D3, D4, D15, D17), the deferred list in `docs/phase-0-implementation-plan.md` §15, and the handoff in `docs/phase-1-implementation-plan.md` §16.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
