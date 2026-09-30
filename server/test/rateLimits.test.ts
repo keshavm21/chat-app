@@ -3,8 +3,8 @@ import pool from '../db/connection.js';
 import { RATE_LIMITS } from '../lib/limits.js';
 import { api, signUp, startServer, type TestServer } from './helpers.js';
 
-// The login and signup limits (audit §7.1). Each test starts its own server, so its
-// counters start at zero; most use the real limits from lib/limits.ts.
+// The login and signup limits (audit §7.1), and the user search and channel creation limits. Each test starts its
+// own server, so its counters start at zero; most use the real limits from lib/limits.ts.
 
 let server: TestServer | undefined;
 
@@ -78,6 +78,61 @@ describe('the signup limit', () => {
     expectRetryAfter(limited, windowMs);
     const { rows } = await pool.query('SELECT count(*)::int AS count FROM users');
     expect(rows[0].count).toBe(limit);
+  });
+});
+
+describe('the user search limit', () => {
+  const { limit, windowMs } = RATE_LIMITS.userSearch;
+  const search = (user: { cookie: string }) => api(server!).get('/api/users').query({ q: 'a' }).set('Cookie', user.cookie);
+
+  it(`answers search number ${limit + 1} by one user with 429; another user on the same IP still gets answers`, async () => {
+    server = await startServer({ rateLimits: RATE_LIMITS });
+    const alice = await signUp(server);
+    const bob = await signUp(server);
+
+    for (let i = 1; i <= limit; i += 1) expect((await search(alice)).status, `search ${i}`).toBe(200);
+    const limited = await search(alice);
+
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual(RATE_LIMITED);
+    expectRetryAfter(limited, windowMs);
+    expect((await search(bob)).status).toBe(200);
+  });
+
+  it('counts each IP separately: visitors sharing one account (the demo) do not share one budget', async () => {
+    server = await startServer({ rateLimits: { ...RATE_LIMITS, userSearch: { limit: 2, windowMs: 60_000 } }, trustProxy: 1 });
+    const demo = await signUp(server);
+    const searchFrom = (ip: string) => search(demo).set('X-Forwarded-For', ip);
+
+    expect((await searchFrom('203.0.113.1')).status).toBe(200);
+    expect((await searchFrom('203.0.113.1')).status).toBe(200);
+    expect((await searchFrom('203.0.113.1')).status).toBe(429);
+    expect((await searchFrom('203.0.113.2')).status).toBe(200);
+  });
+});
+
+describe('the channel creation limit', () => {
+  const { limit, windowMs } = RATE_LIMITS.channelCreation;
+  const create = (user: { cookie: string }, name: string) =>
+    api(server!).post('/api/channels').set('Cookie', user.cookie).send({ name });
+
+  it(`answers channel number ${limit + 1} created by one user with 429; failed attempts and other users do not count`, async () => {
+    server = await startServer({ rateLimits: RATE_LIMITS });
+    const alice = await signUp(server);
+    const bob = await signUp(server);
+
+    for (let i = 1; i <= limit; i += 1) {
+      expect((await create(alice, `channel-${i}`)).status, `channel ${i}`).toBe(201);
+      if (i === 1) expect((await create(alice, 'channel-1')).status).toBe(409); // a taken name: not counted
+    }
+    const limited = await create(alice, 'one-too-many');
+
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual(RATE_LIMITED);
+    expectRetryAfter(limited, windowMs);
+    expect((await create(bob, 'bobs-channel')).status).toBe(201);
+    const { rows } = await pool.query(`SELECT count(*)::int AS count FROM conversations WHERE name <> 'general'`);
+    expect(rows[0].count).toBe(limit + 1);
   });
 });
 

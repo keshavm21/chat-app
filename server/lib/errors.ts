@@ -8,11 +8,11 @@ export const ErrorCode = {
   BAD_REQUEST:         'BAD_REQUEST',         // 4xx: other request-body problems (too large, bad encoding)
   UNAUTHENTICATED:     'UNAUTHENTICATED',     // 401: no valid session (missing, unknown, expired or idle)
   INVALID_CREDENTIALS: 'INVALID_CREDENTIALS', // 401: wrong email or password
-  FORBIDDEN:           'FORBIDDEN',           // 403: a state-changing request from an origin that is not allowed
-  NOT_FOUND:           'NOT_FOUND',           // 404: unknown /api route
+  FORBIDDEN:           'FORBIDDEN',           // 403: a request from an origin that is not allowed, or an action a member may not take (leave #general)
+  NOT_FOUND:           'NOT_FOUND',           // 404: unknown /api route, user, or conversation I am not a member of
   UNSUPPORTED_MEDIA_TYPE: 'UNSUPPORTED_MEDIA_TYPE', // 415: a state-changing request whose body is not JSON
-  RATE_LIMITED:        'RATE_LIMITED',        // 429: too many login or signup attempts (with Retry-After)
-  CONFLICT:            'CONFLICT',            // 409: e.g. email or username already taken
+  RATE_LIMITED:        'RATE_LIMITED',        // 429: too many login, signup or search attempts (with Retry-After)
+  CONFLICT:            'CONFLICT',            // 409: e.g. email, username or channel name already taken
   INTERNAL_ERROR:      'INTERNAL_ERROR',      // 500
 } as const;
 

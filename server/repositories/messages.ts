@@ -1,9 +1,10 @@
 // server/repositories/messages.ts
 import type { Queryable } from '../db/transaction.js';
 
-/** A message as REST (GET /api/messages) and socket (`message`) clients receive it. */
+/** A message as REST (GET /api/conversations/:id/messages) and socket (`message`) clients receive it. */
 export interface Message {
   id: number;
+  conversationId: number;
   seq: number;
   userId: number;
   username: string;
@@ -12,7 +13,8 @@ export interface Message {
 }
 
 // Selects a Message from `m` (messages) joined to `u` (its author).
-const MESSAGE_COLUMNS = `m.id, m.seq, m.author_id AS "userId", u.username, m.content, m.created_at AS "createdAt"`;
+const MESSAGE_COLUMNS = `m.id, m.conversation_id AS "conversationId", m.seq, m.author_id AS "userId", u.username,
+  m.content, m.created_at AS "createdAt"`;
 
 /**
  * Inserts a message with a seq from allocateSeq() and a server-generated client_id,
@@ -38,18 +40,26 @@ export async function createMessage(
   return rows[0];
 }
 
-/** The latest `limit` messages of a conversation, oldest first (by seq). */
-export async function listLatestMessages(db: Queryable, conversationId: number, limit: number): Promise<Message[]> {
+/**
+ * A page of a conversation's history, oldest first (by seq): its latest `limit` messages,
+ * or with `before`, its latest `limit` messages whose seq is below it. The page is found
+ * through the (conversation_id, seq) index, however long the history.
+ */
+export async function listMessages(
+  db: Queryable,
+  conversationId: number,
+  { before, limit }: { before?: number; limit: number },
+): Promise<Message[]> {
   const { rows } = await db.query<Message>(
     `SELECT * FROM (
        SELECT ${MESSAGE_COLUMNS}
        FROM messages m JOIN users u ON u.id = m.author_id
-       WHERE m.conversation_id = $1
+       WHERE m.conversation_id = $1 AND ($2::integer IS NULL OR m.seq < $2)
        ORDER BY m.seq DESC
-       LIMIT $2
-     ) latest
+       LIMIT $3
+     ) page
      ORDER BY seq`,
-    [conversationId, limit],
+    [conversationId, before ?? null, limit],
   );
   return rows;
 }
