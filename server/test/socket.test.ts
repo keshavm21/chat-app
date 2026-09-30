@@ -5,6 +5,7 @@ import {
   api,
   connectSocket,
   disconnectAllSockets,
+  generalId,
   nextEvent,
   signUp,
   startServer,
@@ -67,19 +68,21 @@ describe('Socket.io handshake', () => {
 });
 
 describe('new_message', () => {
-  it('stores the trimmed message and emits it to every client in the REST shape', async () => {
+  it("stores the trimmed message and emits it to the conversation's members in the REST shape", async () => {
     const alice = await signUp(server);
     const bob = await signUp(server);
+    const general = await generalId();
     const aliceSocket = await connectSocket(server.url, alice.cookie);
     const bobSocket = await connectSocket(server.url, bob.cookie);
 
     const toBob = nextEvent(bobSocket, 'message');
     const toAlice = nextEvent(aliceSocket, 'message');
-    aliceSocket.emit('new_message', { content: '  hello bob  ' });
+    aliceSocket.emit('new_message', { conversationId: general, content: '  hello bob  ' });
     const [received, echoed] = await Promise.all([toBob, toAlice]);
 
     expect(received).toEqual({
       id: expect.any(Number),
+      conversationId: general,
       seq: 1,
       userId: alice.user.id,
       username: alice.username,
@@ -95,19 +98,20 @@ describe('new_message', () => {
     expect(rows).toEqual([{ name: 'general', seq: 1, author_id: alice.user.id, content: 'hello bob' }]);
 
     const history = await api(server)
-      .get('/api/messages')
+      .get(`/api/conversations/${general}/messages`)
       .set('Cookie', bob.cookie);
     expect(history.body.messages).toEqual([received]);
   });
 
-  it("numbers #general's messages 1, 2, … and advances its last_seq and last_message_at", async () => {
+  it("numbers a conversation's messages 1, 2, … and advances its last_seq and last_message_at", async () => {
     const alice = await signUp(server);
+    const general = await generalId();
     const socket = await connectSocket(server.url, alice.cookie);
 
     const seqs: number[] = [];
     for (const content of ['one', 'two', 'three']) {
       const broadcast = nextEvent<{ seq: number }>(socket, 'message');
-      socket.emit('new_message', { content });
+      socket.emit('new_message', { conversationId: general, content });
       seqs.push((await broadcast).seq);
     }
 
@@ -126,13 +130,23 @@ describe('new_message', () => {
   // crashed the whole server.
   it('ignores a payload without text content, including null, and keeps working', async () => {
     const alice = await signUp(server);
+    const conversationId = await generalId();
     const socket = await connectSocket(server.url, alice.cookie);
 
     const next = nextEvent<{ seq: number; content: string }>(socket, 'message');
-    for (const payload of [null, 'text', 42, {}, { content: 42 }, { content: '' }, { content: ' \n ' }]) {
+    for (const payload of [
+      null,
+      'text',
+      42,
+      {},
+      { conversationId },
+      { conversationId, content: 42 },
+      { conversationId, content: '' },
+      { conversationId, content: ' \n ' },
+    ]) {
       socket.emit('new_message', payload);
     }
-    socket.emit('new_message', { content: 'still here' });
+    socket.emit('new_message', { conversationId, content: 'still here' });
 
     // The first broadcast is the real message, with the first seq: nothing before it was stored.
     expect(await next).toMatchObject({ seq: 1, content: 'still here' });
@@ -142,19 +156,20 @@ describe('new_message', () => {
 });
 
 describe('typing', () => {
-  it('tells other clients who is typing, and clears it when the typist disconnects', async () => {
+  it("tells the conversation's other members who is typing, and clears it when the typist disconnects", async () => {
     const alice = await signUp(server);
     const bob = await signUp(server);
+    const conversationId = await generalId();
     const aliceSocket = await connectSocket(server.url, alice.cookie);
     const bobSocket = await connectSocket(server.url, bob.cookie);
 
     const typing = nextEvent(bobSocket, 'user_typing');
-    aliceSocket.emit('typing');
-    expect(await typing).toBe(alice.username);
+    aliceSocket.emit('typing', { conversationId });
+    expect(await typing).toEqual({ conversationId, username: alice.username });
 
     // Disconnecting clears the indicator immediately, so no 3-second timer is involved.
     const stopped = nextEvent(bobSocket, 'user_stop_typing');
     aliceSocket.disconnect();
-    expect(await stopped).toBe(alice.username);
+    expect(await stopped).toEqual({ conversationId, username: alice.username });
   });
 });

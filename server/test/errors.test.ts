@@ -116,16 +116,30 @@ describe('REST error envelope', () => {
       .mockImplementationOnce(query as never) // the session lookup (requireSession) succeeds
       .mockRejectedValueOnce(new Error('db exploded at 10.0.0.5'));
 
-    const res = await api(server).get('/api/messages').set('Cookie', dave.cookie);
+    const res = await api(server).get('/api/conversations').set('Cookie', dave.cookie);
 
     expect(res.status).toBe(500);
-    expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch messages.' } });
+    expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Failed to load conversations.' } });
     expect(res.text).not.toContain('db exploded');
     // The real cause goes to the server log instead.
     expect(logged).toHaveBeenCalledWith(
       { err: expect.objectContaining({ message: 'db exploded at 10.0.0.5' }) },
-      'Error fetching messages',
+      'Error listing conversations',
     );
+  });
+
+  it('returns 400 BAD_REQUEST, without logging an error, for a path parameter that is not valid percent-encoding', async () => {
+    const dave = await signUp(server);
+    const logged = vi.spyOn(logger, 'error');
+
+    for (const res of [
+      await api(server).get('/api/conversations/%E0/messages').set('Cookie', dave.cookie),
+      await api(server).post('/api/conversations/%zz/join').set('Cookie', dave.cookie).send({}),
+    ]) {
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { code: 'BAD_REQUEST', message: 'Malformed URL.' } });
+    }
+    expect(logged).not.toHaveBeenCalled();
   });
 });
 

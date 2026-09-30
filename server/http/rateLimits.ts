@@ -1,6 +1,6 @@
 // server/http/rateLimits.ts
-// Brute-force limits on login and signup (audit §7.1; docs/v2-design.md §6). Counters
-// live in memory, which is enough for one instance (D15, D16).
+// Brute-force limits on login and signup (audit §7.1; docs/v2-design.md §6), and limits
+// on user searches and channel creation. Counters live in memory, which is enough for one instance (D15, D16).
 import type { Request } from 'express';
 import { ipKeyGenerator, MemoryStore, rateLimit } from 'express-rate-limit';
 import { AppError, ErrorCode } from '../lib/errors.js';
@@ -10,6 +10,8 @@ import { loginSchema } from './schemas.js';
 export interface RateLimits {
   login: RateLimit;
   signup: RateLimit;
+  userSearch: RateLimit;
+  channelCreation: RateLimit;
 }
 
 // The client's IP as Express sees it (req.ip, which honours `trust proxy`). IPv6
@@ -23,11 +25,17 @@ const loginEmail = (req: Request) => {
 };
 
 /**
- * The login and signup limiters, with fresh counters for each app (so each test server
- * starts from zero). stop() ends their stores' cleanup timers, for the shutdown sequence.
+ * The login, signup, user search and channel creation limiters, with fresh counters for each app (so each
+ * test server starts from zero). stop() ends their stores' cleanup timers, for the
+ * shutdown sequence.
  */
 export function createRateLimiters(limits: RateLimits) {
-  const stores = { login: new MemoryStore(), signup: new MemoryStore() };
+  const stores = {
+    login: new MemoryStore(),
+    signup: new MemoryStore(),
+    userSearch: new MemoryStore(),
+    channelCreation: new MemoryStore(),
+  };
 
   const common = {
     // RateLimit and RateLimit-Policy headers, and Retry-After when over the limit.
@@ -55,9 +63,26 @@ export function createRateLimiters(limits: RateLimits) {
       store: stores.signup,
       keyGenerator: clientIp,
     }),
+    // User searches per user and IP, so nobody can page through every username quickly,
+    // and visitors sharing one account (the demo account) do not share one budget.
+    // Runs after requireSession, which sets req.user.
+    userSearch: rateLimit({
+      ...common,
+      ...limits.userSearch,
+      store: stores.userSearch,
+      keyGenerator: (req) => `${req.user!.id}|${clientIp(req)}`,
+    }),
+    // Channels created per user; attempts that fail (a taken name, bad input) do not count.
+    // Runs after requireSession, which sets req.user.
+    channelCreation: rateLimit({
+      ...common,
+      ...limits.channelCreation,
+      store: stores.channelCreation,
+      keyGenerator: (req) => `${req.user!.id}`,
+      skipFailedRequests: true,
+    }),
     stop() {
-      stores.login.shutdown();
-      stores.signup.shutdown();
+      for (const store of Object.values(stores)) store.shutdown();
     },
   };
 }

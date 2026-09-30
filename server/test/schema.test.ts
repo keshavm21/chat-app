@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { randomBytes, randomUUID } from 'crypto';
 import pool from '../db/connection.js';
-import { EMAIL_MAX_LENGTH, MESSAGE_MAX_LENGTH, USER_AGENT_MAX_LENGTH, USERNAME_PATTERN } from '../lib/limits.js';
+import {
+  CHANNEL_NAME_PATTERN,
+  EMAIL_MAX_LENGTH,
+  MESSAGE_MAX_LENGTH,
+  USER_AGENT_MAX_LENGTH,
+  USERNAME_PATTERN,
+} from '../lib/limits.js';
 
 // The constraints of migrations 0002 and 0003, tested directly in the database without the app.
 // Every test starts from the per-test reset (test/setup.ts): empty tables and #general.
@@ -154,15 +160,20 @@ describe('conversations', () => {
     ['General', false],
     ['has space', false],
     ['under_score', false],
-  ])('channel name %j: accepted = %s', async (name, expected) => {
+  ])('channel name %j: accepted = %s, the same as CHANNEL_NAME_PATTERN (lib/limits.ts)', async (name, expected) => {
+    expect(CHANNEL_NAME_PATTERN.test(name)).toBe(expected);
     expect(await accepted(conversation({ name }), 'conversations_name_format')).toBe(expected);
   });
 
-  it('rejects a second channel with the same name, while DMs have no name', async () => {
+  it("rejects a second public channel with the same name; private channels' names need not be unique (0004)", async () => {
     await expect(conversation({ name: 'general' })).rejects.toMatchObject({
-      code: UNIQUE, constraint: 'conversations_channel_name_key',
+      code: UNIQUE, constraint: 'conversations_public_channel_name_key',
     });
 
+    // A private channel may share its name with a public one, or with another private one,
+    // so trying a name never reveals a private channel.
+    await conversation({ name: 'general', visibility: 'private' });
+    await conversation({ name: 'general', visibility: 'private' });
     await conversation({ type: 'dm', visibility: null, name: null });
     await conversation({ type: 'dm', visibility: null, name: null });
   });

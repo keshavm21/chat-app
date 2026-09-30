@@ -8,6 +8,7 @@ import {
   api,
   connectSocket,
   disconnectAllSockets,
+  generalId,
   nextEvent,
   sessionCookieOf,
   sessionHashOf,
@@ -46,7 +47,7 @@ async function deleteSession(cookie: string) {
 /** Resolves once `socket` has sent a message and received its broadcast: it is still connected. */
 async function roundTrip(socket: Socket, content: string) {
   const echoed = nextEvent<{ content: string }>(socket, 'message');
-  socket.emit('new_message', { content });
+  socket.emit('new_message', { conversationId: await generalId(), content });
   expect(await echoed).toMatchObject({ content });
 }
 
@@ -129,9 +130,9 @@ describe('sweepSessions', () => {
 });
 
 describe('the sweep timer', () => {
-  // Only the intervals are faked. The app has three: the sweep's, and the cleanup timers
-  // of the two rate limiters' stores (http/rateLimits.ts).
-  const APP_INTERVALS = 3;
+  // Only the intervals are faked. The app has five: the sweep's, and the cleanup timers
+  // of the four rate limiters' stores (http/rateLimits.ts).
+  const APP_INTERVALS = 5;
 
   it('sweeps every 5 minutes, and close() leaves no timer behind', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });

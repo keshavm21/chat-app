@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth }      from '../context/useAuth';
 import socket           from '../socket';
 import api              from '../api/axios';
+import { createHandshakeRetry, isAuthenticationError } from '../lib/reconnect';
 
 // ─── Toast Container ───────────────────────────────────────────────────────────
 // Toasts appear bottom-right, above the input bar, and auto-dismiss after 4 s.
@@ -44,6 +45,9 @@ export default function Chat() {
   const [historyError, setHistoryError] = useState('');
   const [toasts,       setToasts]       = useState([]);
   const [typingUsers,  setTypingUsers]  = useState([]);
+  // #general's id. Until the conversations UI (Phase 3, M2), this page shows #general only.
+  const [conversationId, setConversationId] = useState(null);
+  const conversationIdRef = useRef(null);
 
   const bottomRef  = useRef(null);
   const textareaRef = useRef(null);
@@ -85,10 +89,15 @@ export default function Chat() {
   }, [messages, scrollToBottom]);
 
   // ── Fetch message history on mount ────────────────────────────────────────
+  // #general is found among my conversations by name; its latest page is the history.
   useEffect(() => {
     (async () => {
       try {
-        const { data } = await api.get('/api/messages');
+        const { data: { conversations } } = await api.get('/api/conversations');
+        const general = conversations.find(c => c.type === 'channel' && c.visibility === 'public' && c.name === 'general');
+        const { data } = await api.get(`/api/conversations/${general.id}/messages`);
+        conversationIdRef.current = general.id;
+        setConversationId(general.id);
         setMessages(data.messages || []);
       } catch {
         setHistoryError('Could not load message history.');
@@ -101,9 +110,19 @@ export default function Chat() {
   // ── Socket lifecycle ──────────────────────────────────────────────────────
   useEffect(() => {
     let active = true;  // false once this effect is cleaned up
+    // Retries handshakes the server refused without ending the session (lib/reconnect.ts).
+    const handshakeRetry = createHandshakeRetry(() => {
+      if (active && !socket.connected) socket.connect();
+    });
     socket.connect();
 
+    socket.on('connect', () => {
+      handshakeRetry.reset();
+    });
+
+    // The socket gets the messages of all my conversations; this page shows #general's.
     socket.on('message', (msg) => {
+      if (msg.conversationId !== conversationIdRef.current) return;
       setMessages(prev => [...prev, msg]);
     });
 
@@ -116,25 +135,31 @@ export default function Chat() {
       addToast(message || 'Something went wrong. Please try again.');
     });
 
-    // Typing indicator — server broadcasts username strings.
-    socket.on('user_typing', (username) => {
+    // Typing indicator — the server sends { conversationId, username }.
+    socket.on('user_typing', ({ conversationId: id, username }) => {
+      if (id !== conversationIdRef.current) return;
       setTypingUsers(prev =>
         prev.includes(username) ? prev : [...prev, username]
       );
     });
-    socket.on('user_stop_typing', (username) => {
+    socket.on('user_stop_typing', ({ conversationId: id, username }) => {
+      if (id !== conversationIdRef.current) return;
       setTypingUsers(prev => prev.filter(u => u !== username));
     });
 
     socket.on('connect_error', (err) => {
       console.error('Socket error:', err.message);
-      if (err.message.toLowerCase().includes('authentication')) {
+      if (isAuthenticationError(err.message)) {
         // The session expired or was revoked: log out, and ProtectedRoute
         // redirects to /login.
         logout();
-      } else {
-        addToast('Connection lost. Reconnecting…');
+        return;
       }
+      addToast('Connection lost. Reconnecting…');
+      // After a lost connection Socket.io keeps retrying by itself (socket.active). After
+      // a handshake the server refused (it could not reach its database), it gives up:
+      // retry here, with backoff, so the tab does not stay offline until a reload.
+      if (!socket.active) handshakeRetry.schedule();
     });
 
     // The server cut this socket off, which it does when the session ends (a logout
@@ -152,6 +177,8 @@ export default function Chat() {
 
     return () => {
       active = false;
+      handshakeRetry.stop();
+      socket.off('connect');
       socket.off('message');
       socket.off('online_count');
       socket.off('error');
@@ -166,8 +193,8 @@ export default function Chat() {
   // ── Send a message ────────────────────────────────────────────────────────
   const sendMessage = () => {
     const trimmed = text.trim();
-    if (!trimmed || !socket.connected) return;
-    socket.emit('new_message', { content: trimmed });
+    if (!trimmed || !socket.connected || !conversationId) return;
+    socket.emit('new_message', { conversationId, content: trimmed });
     setText('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
   };
@@ -188,8 +215,8 @@ export default function Chat() {
     }
     // Notify the server on every keystroke; the server debounces and
     // auto-clears after 3 s so we never need to emit a "stop typing" event.
-    if (e.target.value.trim() && socket.connected) {
-      socket.emit('typing');
+    if (e.target.value.trim() && socket.connected && conversationId) {
+      socket.emit('typing', { conversationId });
     }
   };
 
@@ -382,7 +409,7 @@ export default function Chat() {
           {/* Send button */}
           <button
             onClick={sendMessage}
-            disabled={!text.trim()}
+            disabled={!text.trim() || !conversationId}
             aria-label="Send message"
             className="flex-none w-10 h-10 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all duration-200 hover:scale-[1.05] active:scale-[0.95]"
           >

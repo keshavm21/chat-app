@@ -8,7 +8,10 @@ import { fileURLToPath } from 'url';
 import { Server }       from 'socket.io';
 
 import authRoutes      from './routes/auth.js';
-import messagesRoutes  from './routes/messages.js';
+import channelRoutes   from './routes/channels.js';
+import conversationRoutes from './routes/conversations.js';
+import dmRoutes        from './routes/dms.js';
+import userRoutes      from './routes/users.js';
 import socketHandler   from './socket/socketHandler.js';
 import { startSessionSweep } from './socket/sessionSweep.js';
 import { config }       from './config/env.js';
@@ -38,7 +41,8 @@ export function createApp({ rateLimits = RATE_LIMITS, trustProxy = config.trustP
 
   // ── HTTP server + Socket.io ──────────────────────────────────────────────────
   // Socket.io needs a raw http.Server — it can't be attached to app directly.
-  // Created before the routes, which need `io` (logout disconnects sockets).
+  // Created before the routes, which need `io` (logout disconnects sockets; joining and
+  // leaving conversations move sockets between rooms).
   const httpServer = createServer(app);
 
   const io = new Server(httpServer, {
@@ -63,11 +67,14 @@ export function createApp({ rateLimits = RATE_LIMITS, trustProxy = config.trustP
   app.use('/api', requireAllowedOrigin, requireJsonBody);
   app.use(express.json());
 
-  // Login and signup limits (429 over them), with fresh counters for each app.
+  // Login, signup, user search and channel creation limits (429 over them), with fresh counters for each app.
   const rateLimiters = createRateLimiters(rateLimits);
 
-  app.use('/api/auth',     authRoutes(io, rateLimiters));
-  app.use('/api/messages', messagesRoutes);
+  app.use('/api/auth',          authRoutes(io, rateLimiters));
+  app.use('/api/conversations', conversationRoutes(io));
+  app.use('/api/channels',      channelRoutes(io, rateLimiters));
+  app.use('/api/dms',           dmRoutes(io));
+  app.use('/api/users',         userRoutes(rateLimiters));
 
   app.get('/api/ping', (_req, res) => res.json({ message: 'Server is alive' }));
 

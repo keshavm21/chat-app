@@ -33,3 +33,33 @@ export async function findUserByEmail(db: Queryable, email: string): Promise<(Us
   );
   return rows[0];
 }
+
+/** What other users may see of a user: usernames are public, emails are not. */
+export type PublicUser = Pick<User, 'id' | 'username'>;
+
+export async function findUserById(db: Queryable, id: number): Promise<PublicUser | undefined> {
+  const { rows } = await db.query<PublicUser>('SELECT id, username FROM users WHERE id = $1', [id]);
+  return rows[0];
+}
+
+/** The user with this (already normalized) username. */
+export async function findUserByUsername(db: Queryable, username: string): Promise<PublicUser | undefined> {
+  const { rows } = await db.query<PublicUser>('SELECT id, username FROM users WHERE username = $1', [username]);
+  return rows[0];
+}
+
+/**
+ * Users other than `excludeUserId` whose username starts with `prefix` ('' for any), by
+ * username, at most `limit`. starts_with() compares plainly: unlike LIKE, it has no
+ * wildcards to escape, and usernames may contain `_`.
+ */
+export async function searchUsers(db: Queryable, prefix: string, excludeUserId: number, limit: number): Promise<PublicUser[]> {
+  const { rows } = await db.query<PublicUser>(
+    `SELECT id, username FROM users
+     WHERE starts_with(username, $1) AND id <> $2
+     ORDER BY username
+     LIMIT $3`,
+    [prefix, excludeUserId, limit],
+  );
+  return rows;
+}

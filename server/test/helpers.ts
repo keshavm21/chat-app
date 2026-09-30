@@ -8,11 +8,13 @@ import { allowedOrigin } from '../http/csrf.js';
 import type { RateLimits } from '../http/rateLimits.js';
 import { hashSessionToken, sessionCookie } from '../lib/sessions.js';
 
-// Test files sign up and log in from one IP far more often than the real limits allow.
-// rateLimits.test.ts passes the real ones (RATE_LIMITS) or low ones instead.
+// Test files sign up, log in and search from one IP far more often than the real limits
+// allow. rateLimits.test.ts passes the real ones (RATE_LIMITS) or low ones instead.
 const TEST_RATE_LIMITS: RateLimits = {
   login: { limit: 100_000, windowMs: 60_000 },
   signup: { limit: 100_000, windowMs: 60_000 },
+  userSearch: { limit: 100_000, windowMs: 60_000 },
+  channelCreation: { limit: 100_000, windowMs: 60_000 },
 };
 
 /**
@@ -50,6 +52,7 @@ export function api(server: TestServer) {
   return {
     get: (url: string) => agent.get(url).set('Origin', allowedOrigin),
     post: (url: string) => agent.post(url).set('Origin', allowedOrigin),
+    put: (url: string) => agent.put(url).set('Origin', allowedOrigin),
   };
 }
 
@@ -79,12 +82,16 @@ export async function setSessionAgo(cookie: string, column: 'expires_at' | 'last
 
 let userCount = 0;
 
-/** Creates a user through POST /api/auth/signup and returns its credentials, user and session cookie. */
-export async function signUp(server: TestServer) {
+/**
+ * Creates a user through POST /api/auth/signup (named `username`, or user1, user2, …) and
+ * returns its credentials, user and session cookie.
+ */
+export async function signUp(server: TestServer, { username }: { username?: string } = {}) {
   userCount += 1;
+  const name = username ?? `user${userCount}`;
   const credentials = {
-    username: `user${userCount}`,
-    email: `user${userCount}@example.test`,
+    username: name,
+    email: `${name}@example.test`,
     password: 'password123',
   };
   const res = await api(server).post('/api/auth/signup').send(credentials).expect(201);
@@ -94,6 +101,56 @@ export async function signUp(server: TestServer) {
     cookie: sessionCookieOf(res),
     user: res.body.user as { id: number; username: string; email: string },
   };
+}
+
+/** The id of #general, re-seeded before every test (looked up by name, never hard-coded). */
+export async function generalId(): Promise<number> {
+  const { rows } = await pool.query(`SELECT id FROM conversations WHERE type = 'channel' AND visibility = 'public' AND name = 'general'`);
+  return rows[0].id;
+}
+
+/** A conversation summary as the API returns it (repositories/conversations.ts), as JSON. */
+export interface ConversationJson {
+  id: number;
+  type: 'channel' | 'dm';
+  visibility: 'public' | 'private' | null;
+  name: string;
+  topic: string | null;
+  role: 'owner' | 'admin' | 'member';
+  lastSeq: number;
+  lastReadSeq: number;
+  unreadCount: number;
+  lastMessageAt: string | null;
+  lastActivityAt: string;
+}
+
+/** Creates a channel through POST /api/channels as `user` and returns its summary. */
+export async function createChannel(
+  server: TestServer,
+  user: { cookie: string },
+  channel: { name: string; topic?: string | null; visibility?: 'public' | 'private' },
+): Promise<ConversationJson> {
+  const res = await api(server).post('/api/channels').set('Cookie', user.cookie).send(channel).expect(201);
+  return res.body.conversation;
+}
+
+/**
+ * Stores `count` messages by `authorId` in a conversation without a socket, numbered and
+ * counted as the send transaction does: the next seqs, last_seq and last_message_at.
+ * Nobody's read position moves.
+ */
+export async function postMessages(conversationId: number, authorId: number, count: number) {
+  await pool.query(
+    `WITH c AS (
+       UPDATE conversations SET last_seq = last_seq + $3, last_message_at = now()
+       WHERE id = $1
+       RETURNING last_seq
+     )
+     INSERT INTO messages (conversation_id, seq, author_id, client_id, content)
+     SELECT $1, s, $2, gen_random_uuid(), 'message ' || s
+     FROM c, generate_series(c.last_seq - $3 + 1, c.last_seq) AS s`,
+    [conversationId, authorId, count],
+  );
 }
 
 const openSockets = new Set<Socket>();

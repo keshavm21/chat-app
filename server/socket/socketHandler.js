@@ -1,21 +1,23 @@
 // server/socket/socketHandler.js
 import pool from '../db/connection.js';
 import { withTransaction } from '../db/transaction.js';
+import { isId } from '../lib/ids.js';
 import { MESSAGE_MAX_LENGTH } from '../lib/limits.js';
 import { logger } from '../lib/logger.js';
 import { hashSessionToken, sessionCookie, sessionRoom } from '../lib/sessions.js';
-import { allocateSeq, findGeneralId, markRead } from '../repositories/conversations.js';
+import { allocateSeq, listMemberConversationIds, markRead } from '../repositories/conversations.js';
 import { createMessage } from '../repositories/messages.js';
 import { findSessionUser } from '../repositories/sessions.js';
+import { conversationRoom, isConversationRoom, membershipChangeCount, userRoom } from './rooms.js';
 
-// Thrown inside the send transaction to roll it back when the sender is not a member.
+// How long after a user's last `typing` event in a conversation their indicator is cleared.
+const TYPING_TIMEOUT_MS = 3000;
+
+// Thrown inside the send transaction to roll it back when the sender is not a member
+// (or the conversation does not exist: the sender is told the same, so nothing leaks).
 class NotAMemberError extends Error {}
 
 export default function socketHandler(io) {
-
-  // Tracks per-user typing timeout so the server can auto-clear after 3 s.
-  // Key: user.id  →  Value: setTimeout handle
-  const typingTimers = new Map();
 
   // ── Auth middleware ────────────────────────────────────────────────────────
   // Runs before every connection is accepted: the browser sends the session cookie
@@ -40,8 +42,20 @@ export default function socketHandler(io) {
       return next(new Error('Authentication error: invalid or expired token'));
     }
 
+    // The user's conversations, whose rooms the socket joins as soon as it connects.
+    const changesBefore = membershipChangeCount();
+    let conversationIds;
+    try {
+      conversationIds = await listMemberConversationIds(pool, user.id);
+    } catch (err) {
+      logger.error({ err }, 'Socket conversation lookup failed');
+      return next(new Error('Server error: could not load your conversations'));
+    }
+
     socket.user = { id: user.id, username: user.username };
     socket.sessionHash = sessionHash;
+    socket.conversationIds = conversationIds;
+    socket.membershipChangesBefore = changesBefore;
     next();
   });
 
@@ -51,8 +65,42 @@ export default function socketHandler(io) {
     const log = logger.child({ socketId: socket.id, userId: socket.user.id, username: socket.user.username });
     log.info('Socket connected');
 
-    // When the session ends (logout, the sweep), all of its sockets are disconnected through this room.
-    socket.join(sessionRoom(socket.sessionHash));
+    // The rooms are joined here, synchronously, in the same tick in which Socket.io
+    // registered the socket and sent it `connect`: no broadcast can run in between, so
+    // by the time the client sees `connect`, it misses nothing.
+    // - session: ending the session disconnects all of its sockets (logout, the sweep);
+    // - user: membership changes move all of the user's sockets between rooms (rooms.ts);
+    // - each conversation: its messages and typing go to its members only.
+    // From here on, membership changes reach this socket through its user's room.
+    socket.join([
+      sessionRoom(socket.sessionHash),
+      userRoom(socket.user.id),
+      ...socket.conversationIds.map(conversationRoom),
+    ]);
+    // A membership that changed while the socket was connecting (after the middleware's
+    // lookup, before this point) moved no rooms for it: socketsJoin() and socketsLeave()
+    // cannot reach a socket that is not connected yet. Then look again, now that later
+    // changes do reach it; and again if another change came during that lookup, since
+    // its result could then undo that change (a leave, say).
+    const syncRooms = async () => {
+      for (;;) {
+        const changesBefore = membershipChangeCount();
+        const ids = await listMemberConversationIds(pool, socket.user.id);
+        if (!socket.connected) return;
+        if (membershipChangeCount() !== changesBefore) continue;
+        const current = new Set(ids.map(conversationRoom));
+        for (const room of socket.rooms) {
+          if (isConversationRoom(room) && !current.has(room)) socket.leave(room);
+        }
+        socket.join([...current]);
+        return;
+      }
+    };
+    if (membershipChangeCount() !== socket.membershipChangesBefore) {
+      syncRooms().catch((err) => log.error({ err }, 'Socket conversation lookup failed'));
+    }
+    delete socket.conversationIds;
+    delete socket.membershipChangesBefore;
 
     // Tell everyone the new count (including the arriving user).
     io.emit('online_count', io.sockets.sockets.size);
@@ -60,8 +108,9 @@ export default function socketHandler(io) {
     // ── new_message ────────────────────────────────────────────────────────
     // The payload is whatever the client sent (possibly null): never destructure it.
     socket.on('new_message', async (payload) => {
+      const conversationId = payload?.conversationId;
       const content = payload?.content;
-      if (typeof content !== 'string') return;
+      if (!isId(conversationId) || typeof content !== 'string') return;
       const text = content.trim();
       if (!text) return; // empty messages are ignored
       // Counted in characters (code points), as the database's char_length() does.
@@ -71,26 +120,25 @@ export default function socketHandler(io) {
       }
 
       try {
-        // Everything goes to #general for now. allocateSeq() locks #general's row
-        // until COMMIT, so concurrent sends get consecutive seqs in commit order.
+        // allocateSeq() locks the conversation's row until COMMIT, so concurrent sends
+        // get consecutive seqs in commit order.
         const message = await withTransaction(async (client) => {
-          const conversationId = await findGeneralId(client);
           const seq = await allocateSeq(client, conversationId);
+          if (seq === undefined) throw new NotAMemberError(); // no such conversation
           const created = await createMessage(client, { conversationId, seq, authorId: socket.user.id, content: text });
-          // Not a member (e.g. a user deleted while their socket is connected): roll
-          // back, which also gives the seq back, so it leaves no gap.
+          // Not a member: roll back, which also gives the seq back, so it leaves no gap.
           if (!created) throw new NotAMemberError();
           // The sender has read everything up to their own message.
           await markRead(client, conversationId, socket.user.id, seq);
           return created;
         });
 
-        // Only after COMMIT: broadcast to ALL connected clients (including the sender
-        // so their message appears in the same pipeline as everyone else's).
-        io.emit('message', message);
+        // Only after COMMIT: to the conversation's members, the sender included, so
+        // their message appears in the same pipeline as everyone else's.
+        io.to(conversationRoom(conversationId)).emit('message', message);
       } catch (err) {
         if (err instanceof NotAMemberError) {
-          log.warn('Message rejected: the sender is not a member of #general');
+          log.warn({ conversationId }, 'Message rejected: the sender is not a member');
           socket.emit('error', { message: 'You are not a member of this conversation.' });
           return;
         }
@@ -101,22 +149,33 @@ export default function socketHandler(io) {
     });
 
     // ── typing ─────────────────────────────────────────────────────────────
-    // The client emits this on every keystroke; the server debounces it so
-    // only one broadcast fires per burst, then auto-clears after 3 s of silence.
-    socket.on('typing', () => {
-      if (!typingTimers.has(socket.user.id)) {
-        // First event in this burst — let everyone else know.
-        socket.broadcast.emit('user_typing', socket.user.username);
+    // The client emits this on every keystroke; the server debounces it so only one
+    // `user_typing` goes out per burst, and `user_stop_typing` after 3 s of silence.
+    // The timers are this socket's own (conversationId → timer), so another tab
+    // disconnecting never clears this one's indicator.
+    const typingTimers = new Map();
+    const typing = (conversationId) => ({ conversationId, username: socket.user.username });
+    // The conversation's members, except the typist in any of their tabs.
+    const othersIn = (conversationId) => io.to(conversationRoom(conversationId)).except(userRoom(socket.user.id));
+
+    socket.on('typing', (payload) => {
+      const conversationId = payload?.conversationId;
+      // Members only: the socket's rooms are its user's memberships.
+      if (!isId(conversationId) || !socket.rooms.has(conversationRoom(conversationId))) return;
+
+      if (!typingTimers.has(conversationId)) {
+        // First event in this burst — let the others know.
+        othersIn(conversationId).emit('user_typing', typing(conversationId));
       }
 
       // Reset (or start) the auto-clear countdown.
-      clearTimeout(typingTimers.get(socket.user.id));
+      clearTimeout(typingTimers.get(conversationId));
       typingTimers.set(
-        socket.user.id,
+        conversationId,
         setTimeout(() => {
-          socket.broadcast.emit('user_stop_typing', socket.user.username);
-          typingTimers.delete(socket.user.id);
-        }, 3000)
+          typingTimers.delete(conversationId);
+          othersIn(conversationId).emit('user_stop_typing', typing(conversationId));
+        }, TYPING_TIMEOUT_MS),
       );
     });
 
@@ -124,12 +183,12 @@ export default function socketHandler(io) {
     socket.on('disconnect', (reason) => {
       log.info({ reason }, 'Socket disconnected');
 
-      // If the user was mid-typing, cancel the timer and clear the indicator.
-      if (typingTimers.has(socket.user.id)) {
-        clearTimeout(typingTimers.get(socket.user.id));
-        typingTimers.delete(socket.user.id);
-        socket.broadcast.emit('user_stop_typing', socket.user.username);
+      // If the user was mid-typing, cancel the timers and clear the indicators.
+      for (const [conversationId, timer] of typingTimers) {
+        clearTimeout(timer);
+        othersIn(conversationId).emit('user_stop_typing', typing(conversationId));
       }
+      typingTimers.clear();
 
       // Emit the *updated* size after this socket is removed.
       io.emit('online_count', io.sockets.sockets.size);

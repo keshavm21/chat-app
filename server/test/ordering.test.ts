@@ -6,7 +6,9 @@ import {
   api,
   collectEvents,
   connectSocket,
+  createChannel,
   disconnectAllSockets,
+  generalId,
   nextEvent,
   signUp,
   startServer,
@@ -32,6 +34,7 @@ afterAll(async () => {
 
 interface Message {
   id: number;
+  conversationId: number;
   seq: number;
   userId: number;
   content: string;
@@ -51,10 +54,10 @@ async function lastReadSeq(userId: number): Promise<number> {
   return rows[0].last_read_seq;
 }
 
-/** Sends a message and resolves with its broadcast back to the sender (after COMMIT). */
+/** Sends a message to #general and resolves with its broadcast back to the sender (after COMMIT). */
 async function send(socket: Socket, content: string): Promise<Message> {
   const broadcast = nextEvent<Message>(socket, 'message');
-  socket.emit('new_message', { content });
+  socket.emit('new_message', { conversationId: await generalId(), content });
   return broadcast;
 }
 
@@ -65,11 +68,12 @@ describe('message seq', () => {
     const aliceSocket = await connectSocket(server.url, alice.cookie);
     const bobSocket = await connectSocket(server.url, bob.cookie);
 
+    const conversationId = await generalId();
     const broadcasts = collectEvents<Message>(aliceSocket, 'message', 20);
     // Not awaited: all 20 sends are in flight at once and contend for #general's row.
     for (let i = 1; i <= 10; i += 1) {
-      aliceSocket.emit('new_message', { content: `alice ${i}` });
-      bobSocket.emit('new_message', { content: `bob ${i}` });
+      aliceSocket.emit('new_message', { conversationId, content: `alice ${i}` });
+      bobSocket.emit('new_message', { conversationId, content: `bob ${i}` });
     }
     const received = await broadcasts;
 
@@ -86,6 +90,26 @@ describe('message seq', () => {
     }
   });
 
+  it('numbers each conversation on its own: concurrent sends to two conversations each get 1–10', async () => {
+    const alice = await signUp(server);
+    const socket = await connectSocket(server.url, alice.cookie);
+    const general = await generalId();
+    const other = await createChannel(server, alice, { name: 'other' });
+
+    const broadcasts = collectEvents<Message>(socket, 'message', 20);
+    for (let i = 1; i <= 10; i += 1) {
+      socket.emit('new_message', { conversationId: general, content: `general ${i}` });
+      socket.emit('new_message', { conversationId: other.id, content: `other ${i}` });
+    }
+    const received = await broadcasts;
+
+    const oneToTen = Array.from({ length: 10 }, (_, i) => i + 1);
+    for (const conversationId of [general, other.id]) {
+      const seqs = received.filter((m) => m.conversationId === conversationId).map((m) => m.seq);
+      expect(seqs.sort((a, b) => a - b)).toEqual(oneToTen);
+    }
+  });
+
   it('does not use up a seq when a send fails after taking one: the next message gets the next seq', async () => {
     const alice = await signUp(server);
     const carol = await signUp(server);
@@ -97,7 +121,7 @@ describe('message seq', () => {
     // her membership: her send takes #general's next seq, then finds she is not a member.
     await pool.query('DELETE FROM users WHERE id = $1', [carol.user.id]);
     const rejected = nextEvent(carolSocket, 'error');
-    carolSocket.emit('new_message', { content: 'from a deleted account' });
+    carolSocket.emit('new_message', { conversationId: await generalId(), content: 'from a deleted account' });
     expect(await rejected).toEqual({ message: 'You are not a member of this conversation.' });
     expect(await generalLastSeq()).toBe(1);
 
@@ -141,12 +165,12 @@ describe('history order', () => {
       [user.user.id],
     );
 
-    const res = await api(server).get('/api/messages').set('Cookie', user.cookie);
+    const res = await api(server).get(`/api/conversations/${await generalId()}/messages`).set('Cookie', user.cookie);
 
     expect(res.body.messages.map((m: Message) => m.content)).toEqual(['first', 'second', 'third']);
   });
 
-  it('returns the latest 50 messages by seq', async () => {
+  it('returns the latest 50 messages by seq by default', async () => {
     const user = await signUp(server);
     await pool.query(
       `INSERT INTO messages (conversation_id, seq, author_id, client_id, content)
@@ -156,7 +180,7 @@ describe('history order', () => {
       [user.user.id],
     );
 
-    const res = await api(server).get('/api/messages').set('Cookie', user.cookie);
+    const res = await api(server).get(`/api/conversations/${await generalId()}/messages`).set('Cookie', user.cookie);
 
     expect(res.body.messages.map((m: Message) => m.seq)).toEqual(Array.from({ length: 50 }, (_, i) => i + 6));
   });
@@ -168,7 +192,7 @@ describe('message length', () => {
     const socket = await connectSocket(server.url, alice.cookie);
 
     const rejected = nextEvent(socket, 'error');
-    socket.emit('new_message', { content: 'x'.repeat(MESSAGE_MAX_LENGTH + 1) });
+    socket.emit('new_message', { conversationId: await generalId(), content: 'x'.repeat(MESSAGE_MAX_LENGTH + 1) });
     expect(await rejected).toEqual({ message: 'Message is too long (maximum 4000 characters).' });
     expect(await generalLastSeq()).toBe(0);
     expect((await pool.query('SELECT 1 FROM messages')).rows).toEqual([]);
