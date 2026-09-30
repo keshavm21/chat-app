@@ -1,6 +1,6 @@
 # Relay — Phase 3 Implementation Plan: channels, DMs and launch
 
-**Status:** ✅ **Approved** (2026-09-30), with the maintainer's decisions in [§9](#9-decisions-confirmed-at-approval). Not started.
+**Status:** ✅ **Approved** (2026-09-30), with the maintainer's decisions in [§9](#9-decisions-confirmed-at-approval). **In progress:** M0 done (2026-09-30: draft PR #3, CI green, Vercel deployments of `phase-3` off); M1 implemented (2026-10-01), awaiting approval — see [§10](#10-progress-record).
 **Scope source:** `docs/v2-design.md` §9 (Phases 3, 4 and 8), cut down to the visible features, as the maintainer decided on 2026-09-30: Relay is a portfolio project, and it should be finished quickly. The handoff is `docs/phase-2-implementation-plan.md` §18.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
 
@@ -138,3 +138,28 @@ Confirmed by the maintainer on 2026-09-30.
 | 2 | **Unread counts in the sidebar** | **Include.** |
 | 3 | **What a visitor sees first** | **A demo login plus seeded channels.** |
 | 4 | **Private channels** | **Include if it does not take long:** the minimal form in §1 and §5, built last in M1 and M2 and dropped if it grows. |
+
+---
+
+## 10. Progress record
+
+| Milestone | State | Notes |
+|---|---|---|
+| M0 — Branch | Done 2026-09-30 | `phase-3` from `phase-2` (`06bdb9c`); draft PR #3 `phase-3 → main`; CI green; `client/vercel.json` turns off Vercel deployments of the branch (GitHub shows none). |
+| M1 — Conversations on the server | Implemented 2026-10-01, awaiting approval | The REST API and rooms of §5; `GET /api/messages` and the global broadcast removed; the maintainer's four follow-up decisions (below); server tests 208 → 325, and 7 client unit tests. Details below. |
+
+**Maintainer's decisions on M1** (2026-10-01):
+1. **Private channel names cannot be found through a 409.** Migration `0004` makes names unique among public channels only; private channels may share a name with each other or with a public channel. `#general` is therefore looked up by name and `visibility = 'public'`.
+2. **Members other than the owner can leave a private channel**, which ends their access at once (the membership row is deleted, then their sockets leave the room). The owner cannot leave (403); there is no ownership transfer. DMs still cannot be left.
+3. **Channel creation is limited to 20 per user per hour** (in memory, like the other limits); only successful creations count. The demo account's visitors share this budget, which is why it is not smaller.
+4. **A refused socket handshake is retried by the client** (`client/src/lib/reconnect.ts`: 1 s, doubling to 30 s, ±25 % jitter), so a brief database failure no longer leaves the tab offline until a reload. The client's first unit tests run under Node's own test runner (`npm test` in `client/`, a CI step), with no new dependency.
+
+**M1 notes** (choices the plan left open, for the maintainer's review):
+- **The client changed a little in M1** (`Chat.jsx` only): removing `GET /api/messages` would otherwise break the app until M2, and §4 wants it working at the end of each milestone. It shows `#general` through the new API; everything else waits for M2.
+- **Summary fields beyond §5's list:** `visibility` (the private lock), `topic` (the header), `role` (the owner's "add people") and `lastActivityAt` (the sort key, so the client can keep the server's order).
+- **Status codes:** non-members and missing or malformed ids get 404; leaving `#general` or a DM, the owner leaving a private channel, and adding members as anyone but a private channel's owner, get 403; a taken channel name 409; an existing DM 200, a new one 201.
+- **Limits** (`lib/limits.ts`): topic ≤ 250 characters (checked in code only; the database has no topic constraint), history pages of 50 (at most 100), channel list ≤ 50, user search ≤ 10 results and 60 searches a minute per user and IP, 20 channels created per user per hour.
+- **Typing** is now timed per socket and conversation, and never sent to the typist's own tabs.
+- **Connect race closed:** a membership that changes while a socket is still connecting is caught by a change counter, and the socket looks its memberships up again (until no change happens during the lookup).
+- **Not done (outside the plan):** message rate limits; zod schemas for socket payloads.
+- **Known issues:** a NUL character in a message or a login email reaches Postgres and fails as a 500 or "Failed to save message." (both from before Phase 3).
