@@ -1,6 +1,6 @@
 # Relay — Phase 3 Implementation Plan: channels, DMs and launch
 
-**Status:** ✅ **Approved** (2026-09-30), with the maintainer's decisions in [§9](#9-decisions-confirmed-at-approval). **In progress:** M0 done (2026-09-30: draft PR #3, CI green, Vercel deployments of `phase-3` off); M1 done (approved 2026-10-01); M2 implemented (2026-10-01), awaiting approval — see [§10](#10-progress-record).
+**Status:** ✅ **Approved** (2026-09-30), with the maintainer's decisions in [§9](#9-decisions-confirmed-at-approval). **Complete on the `phase-3` branch** (2026-10-01): M0–M2 done and approved, M3 implemented and awaiting approval — see [§10 Progress record](#10-progress-record) and [§11 Completion record](#11-completion-record). **The release (§8) is the maintainer's to run.**
 **Scope source:** `docs/v2-design.md` §9 (Phases 3, 4 and 8), cut down to the visible features, as the maintainer decided on 2026-09-30: Relay is a portfolio project, and it should be finished quickly. The handoff is `docs/phase-2-implementation-plan.md` §18.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
 
@@ -147,7 +147,8 @@ Confirmed by the maintainer on 2026-09-30.
 |---|---|---|
 | M0 — Branch | Done 2026-09-30 | `phase-3` from `phase-2` (`06bdb9c`); draft PR #3 `phase-3 → main`; CI green; `client/vercel.json` turns off Vercel deployments of the branch (GitHub shows none). |
 | M1 — Conversations on the server | Done 2026-10-01 (approved with the decisions below) | The REST API and rooms of §5; `GET /api/messages` and the global broadcast removed; the maintainer's four follow-up decisions (below); server tests 208 → 325, and 7 client unit tests. Details below. |
-| M2 — Conversations in the client | Implemented 2026-10-01, awaiting approval | The §6 client, checked in headless Chrome as §6 asks; 28 client unit tests. Details below. |
+| M2 — Conversations in the client | Done 2026-10-01 (approved) | The §6 client, checked in headless Chrome as §6 asks; 28 client unit tests. Details below. |
+| M3 — Launch | Implemented 2026-10-01, awaiting approval | Demo data and the demo login, landing page and README, ADR 0006, docs, the fresh-clone check. Details below and in §11. |
 
 **Maintainer's decisions on M1** (2026-10-01):
 1. **Private channel names cannot be found through a 409.** Migration `0004` makes names unique among public channels only; private channels may share a name with each other or with a public channel. `#general` is therefore looked up by name and `visibility = 'public'`.
@@ -173,4 +174,38 @@ Confirmed by the maintainer on 2026-09-30.
 - **`/chat`** reopens the conversation last open in this browser (per user), else `#general`.
 - **Verified in headless Chrome** (three users): create a channel, another joins, messages and typing reach members only (the third user's socket received nothing of it); unread badges rise, clear, and stay cleared after a reload; a DM appears in the other user's sidebar with a badge; "Load older" pages back to seq 1; a private channel appears live when its owner adds someone, cannot be found by others, and can be left; the mobile drawer; a dropped connection catches up once, without duplicates; `/chat` reopens the last conversation; a refused handshake recovers without a reload. Found and fixed on the way: the typing indicator did not show in an empty conversation, and two sibling components with the same `key` left a stale message list on screen.
 - **Not done (outside the plan):** cross-tab read sync (another tab's badge clears on its next reconnect or reload), a member list, notifications.
+
+**M3 notes:**
+- **Demo data:** `npm run seed:demo` (`server/scripts/seedDemo.ts`) creates the demo account (`demo@example.com` / `relay-demo`), four demo users nobody can log in as, `#random`, `#engineering`, a private `#launch-plans` owned by the demo account and a DM with it, each with a short conversation that explains a feature, and a topic for `#general`. One transaction; idempotent; it refuses to run if one of its usernames belongs to someone else, so it never posts as a real user. It is a TypeScript script run with `tsx`, like `npm run dev`, and stays out of the build.
+- **Demo login:** "Try the demo account" on the login page fills in the credentials; the landing page's new "Try the demo" opens `/login?demo` with them filled in. The landing page also lists the features.
+- **README:** rewritten for Phase 3: what to try first, new screenshots (landing, chat, mobile) taken from a freshly seeded database in production mode, features, status, structure, setup with the seed and the client tests, and how conversations, rooms and unread counts work. `docs/demo.gif` showed the old single-room app and is removed (no screen recorder was at hand to make a new one).
+- **Found and fixed during the checks:** after someone sent a message, their next keystroke within 3 s did not show them typing again (clients clear the indicator on the message, while the server's burst went on). Sending now ends the burst; `rooms.test.ts` covers it.
+- **Docs:** ADR 0006 (the reduced scope, the socket send and the simplified sync level), `docs/v2-design.md` §9 and next steps, CLAUDE.md, §11 below.
+
+---
+
+## 11. Completion record
+
+Phase 3 was completed on 2026-10-01 on the `phase-3` branch, with draft PR #3 (`phase-3 → main`, which carries Phase 2 too) running CI on every push. Each milestone started after the maintainer approved the previous one; the maintainer reviewed the changes and made the commits, a feature commit and a docs commit per milestone. Server tests grew from 208 to 330; the client got its first tests (28, under Node's own test runner).
+
+| Milestone | Commits | Notes |
+|---|---|---|
+| M0 — Branch | `06bdb9c` | Vercel deployments of `phase-3` off; draft PR #3. |
+| M1 — Conversations on the server | `ecae495`, `87c3002` | The REST API, rooms and the maintainer's four follow-up decisions (§10): public-only name uniqueness (migration `0004`), leaving private channels, a channel-creation limit, the client's handshake retry. |
+| M2 — Conversations in the client | `d70c066`, `d3f00d8` | Sidebar, conversation view, dialogs, unread badges, load older, reconnect catch-up, mobile drawer. |
+| M3 — Launch | this milestone's commits | Demo data and login, landing page, README, ADR 0006, the fresh-clone check. |
+
+**Fresh-clone verification (M3).** A fresh clone of `phase-3` (`d3f00d8`) with M3's changes applied, and a clean Docker volume under a separate Compose project (`relay-fresh`), so the maintainer's `relay_dev` was kept. Following the README: `npm install` in both projects; `docker compose up`; `.env` copied from `.env.example` unchanged; `npm run migrate` built the database from `0001`–`0004`; `0004` rolled back and re-applied; `npm run seed:demo` created 5 users, 4 conversations and 14 messages, and a second run created nothing; `npm test` migrated `relay_test` and passed 329 of 329 (330 with the typing fix found below); the client's 28 tests, and lint, typecheck and build in both projects, passed. The app, run with both `npm run dev`s through the Vite proxy, passed a smoke test in headless Chrome: the landing page's "Try the demo" signs in as the demo account, which finds the seeded channels, the private channel and the DM with unread badges; the login page's button fills the form; a new user and the demo account chat live in `#general`, typing included; opening a channel clears its badge. Render's build and start commands (§8, step 2; the Phase 2 plan's §15, step 3), run from the clone's root with `NODE_ENV=production`, built both projects and served the client: `/`, `/chat`, `/c/1` and `/login?demo` as `index.html` with `no-cache`, a missing asset as 404, `/api` JSON 404s; the same smoke test passed against it, the session cookie was `__Host-relay_session` with `HttpOnly`, `Secure` and `SameSite=Lax`, and the README's screenshots were taken there. That run found the typing bug above; after the fix, the clone was rebuilt and every check passed again.
+
+**Production:** untouched. `main` is the Phase 1 app; nothing from `phase-2` or `phase-3` is merged; the production database was never connected to.
+
+**Known issues and notes**
+- Everything in the Phase 2 plan's §17 still applies (`ws` advisories through Socket.io, the free tier's cold start, no long-polling fallback, the 5-minute sweep for sessions that end without a logout).
+- The demo account is shared: one visitor's reads clear badges for the next, and anyone can post as it (the existing rate limits apply). Running `npm run seed:demo` again does not reset it.
+- A send lost while the socket drops is not retried (ADR 0006); another tab's unread badges catch up on its next reconnect or reload (no cross-tab read sync).
+- Channel names: private channels may share a name, so a user can see two `#plans` in their sidebar if they are in both.
+- A NUL character in a message or a login email reaches Postgres and fails as "Failed to save message." or a 500 (both from before Phase 3).
+- Socket payloads are checked by hand, not with zod; messages have no rate limit.
+
+**Next:** the release (§8), run by the maintainer: a fresh production database, `npm run migrate` and `npm run seed:demo` against it, Render's settings, then merging PR #3 (which closes PR #2).
 

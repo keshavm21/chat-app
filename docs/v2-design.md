@@ -666,7 +666,10 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** auth API and CSRF tests; socket rejects missing or revoked sessions; logout disconnects the session's sockets.
 - **Done when:** no token is readable by JavaScript and logout cuts off live sockets.
 
-### Phase 3 — Conversations and authorization (vertical slice)
+### Phase 3 — Conversations and authorization (vertical slice) — ✅ complete (release pending), reduced scope
+
+- **Status:** completed 2026-10-01 on the `phase-3` branch (draft PR #3, which carries Phase 2 too), as planned in `docs/phase-3-implementation-plan.md` (decisions in its §3 and §9, progress and completion record in its §10–§11). The maintainer cut Phases 3–8 down to the visible features (ADR 0006): public channels, minimal private channels, DMs, messaging, typing and unread counts per conversation, a demo account with seeded channels, and one release of Phases 2 and 3 from a fresh database. Messages are still sent over the socket (not D2's REST writes), and sync is at the simplified level of §5. Of Phase 4, the per-conversation send, keyset pagination, the client's decomposition with "load older", and the removal of the single-room API were built here; of Phase 6, unread counts and the per-conversation typing relay. There is no service or policy layer: routes call repositories, and the only rule is membership (404 to non-members).
+
 
 - **Goal:** channels, DMs and memberships end to end.
 - **Changes:**
@@ -678,7 +681,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** the full authorization matrix; the concurrent DM-creation race; a non-member receives nothing.
 - **Done when:** users can create, join and leave conversations, and every permission rule is tested.
 
-### Phase 4 — Messaging in conversations
+### Phase 4 — Messaging in conversations — not scheduled (see Phase 3 and ADR 0006)
 
 - **Goal:** per-conversation messaging with ordering guarantees.
 - **Changes:**
@@ -690,7 +693,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** parallel sends produce gapless `seq`; retry does not duplicate; removed members stop receiving; pagination edges.
 - **Done when:** audit issues §4.3 and §4.5 cannot be reproduced.
 
-### Phase 5 — Sync and resilience
+### Phase 5 — Sync and resilience — not scheduled (see Phase 3 and ADR 0006)
 
 - **Goal:** correctness through disconnects.
 - **D5 decision point:** implement the full model (`rev`, the changes endpoint, gap detection) or one of the simpler levels in §5, and record the choice in an ADR.
@@ -699,7 +702,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** unit tests of the merge logic with shuffled and duplicated events; socket tests with dropped events; Playwright offline/online test; a server restart during an active chat.
 - **Done when:** audit issue §4.4 cannot be reproduced, a restart mid-conversation loses nothing, and all five guarantees in §5 hold.
 
-### Phase 6 — Awareness
+### Phase 6 — Awareness — not scheduled (see Phase 3 and ADR 0006)
 
 - **Goal:** unread counts, read state, typing, presence.
 - **Changes:** read endpoint with `GREATEST`; `read:updated`; unread computed from counters; stateless typing relay; presence map with a grace period.
@@ -707,7 +710,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** cross-tab read sync; monotonic read under concurrent updates; multi-tab presence; typing throttle.
 - **Done when:** the audit §5 presence and typing issues are resolved.
 
-### Phase 7 — Message editing, deletion and moderation
+### Phase 7 — Message editing, deletion and moderation — not scheduled (see Phase 3 and ADR 0006)
 
 - **Goal:** editing and deletion (D11) and channel moderation.
 - **Changes:** PATCH and DELETE message endpoints (which bump `rev` in the full model); `message:updated`; edit and delete in the UI; admin deletes and member removal in the UI.
@@ -715,7 +718,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** a client that was offline during an edit or delete sees the result after reconnecting; policy tests for editing own messages and deleting others' messages.
 - **Done when:** edits and deletes reach every client, including ones that were offline.
 
-### Phase 8 — Hardening and launch
+### Phase 8 — Hardening and launch — not scheduled (see Phase 3 and ADR 0006)
 
 - **Goal:** production-ready and portfolio-ready.
 - **Changes:**
@@ -817,5 +820,6 @@ All decisions were approved on 2026-09-27.
 2. ~~Write and approve `docs/phase-1-implementation-plan.md` and implement Phase 1~~ — done 2026-09-27 on the `phase-1` branch (that plan's §15).
 3. ~~Run the Phase 1 production cutover~~ — done 2026-09-27 (the Phase 1 plan's §15).
 4. ~~Write and approve `docs/phase-2-implementation-plan.md`, choose the production cookie topology and implement Phase 2~~ — done 2026-09-28 on the `phase-2` branch (that plan's §17).
-5. **Release Phase 2** when the maintainer decides, following the Phase 2 plan's §15.
-6. **Write and approve `docs/phase-3-implementation-plan.md`** before any Phase 3 code (handoff in the Phase 2 plan's §18). The scope of Phases 3–8 is to be revisited first: Relay is a portfolio project on free tiers.
+5. ~~Release Phase 2~~ — postponed (2026-09-30), to be released together with Phase 3 (item 7).
+6. ~~Write and approve `docs/phase-3-implementation-plan.md` and implement Phase 3~~ — done 2026-10-01 on the `phase-3` branch, with Phases 4–8 cut to their visible parts (ADR 0006; that plan's §11).
+7. **Release Phases 2 and 3 together** when the maintainer decides, from a fresh database, following the Phase 3 plan's §8 (which replaces the Phase 2 plan's §15).
