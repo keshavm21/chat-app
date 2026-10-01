@@ -43,14 +43,18 @@ export function ChatProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const [visible, setVisible] = useState(() => document.visibilityState === 'visible');
 
-  // What the socket's listeners (registered once) need to read.
+  // What the socket's listeners (registered once) need to read. navigate is among them:
+  // under BrowserRouter, useNavigate() returns a new function after every navigation, so
+  // as a dependency it would reconnect the socket each time the conversation changes.
   const openIdRef = useRef(openId);
   const userIdRef = useRef(user.id);
   const timelinesRef = useRef(timelines);
+  const navigateRef = useRef(navigate);
   useEffect(() => {
     openIdRef.current = openId;
     userIdRef.current = user.id;
     timelinesRef.current = timelines;
+    navigateRef.current = navigate;
   });
 
   const notify = useCallback((message) => {
@@ -187,7 +191,7 @@ export function ChatProvider({ children }) {
     socket.on('conversation:left', ({ conversationId }) => {
       changeList((list) => removeConversation(list, conversationId));
       dispatch({ type: 'forget', conversationId });
-      if (openIdRef.current === conversationId) navigate('/chat', { replace: true });
+      if (openIdRef.current === conversationId) navigateRef.current('/chat', { replace: true });
     });
 
     socket.on('user_typing', ({ conversationId, username }) => {
@@ -245,7 +249,7 @@ export function ChatProvider({ children }) {
       }
       socket.disconnect();
     };
-  }, [changeList, loadConversations, loadLatest, logout, navigate, notify]);
+  }, [changeList, loadConversations, loadLatest, logout, notify]);
 
   // The sidebar does not wait for the socket.
   useEffect(() => {
@@ -301,8 +305,8 @@ export function ChatProvider({ children }) {
     await api.post(`/api/conversations/${conversationId}/leave`, {});
     changeList((list) => removeConversation(list, conversationId));
     dispatch({ type: 'forget', conversationId });
-    navigate('/chat', { replace: true });
-  }, [changeList, navigate]);
+    navigateRef.current('/chat', { replace: true });
+  }, [changeList]);
 
   const value = useMemo(() => ({
     conversations, listStatus, timelines, typing, onlineCount, connected, toasts,
