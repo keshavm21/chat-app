@@ -136,6 +136,10 @@ export default function socketHandler(io) {
         // Only after COMMIT: to the conversation's members, the sender included, so
         // their message appears in the same pipeline as everyone else's.
         io.to(conversationRoom(conversationId)).emit('message', message);
+        // Sending ends this socket's typing burst there: clients stop showing the sender
+        // as typing when the message arrives, so the next keystroke must say so again.
+        clearTimeout(typingTimers.get(conversationId));
+        typingTimers.delete(conversationId);
       } catch (err) {
         if (err instanceof NotAMemberError) {
           log.warn({ conversationId }, 'Message rejected: the sender is not a member');

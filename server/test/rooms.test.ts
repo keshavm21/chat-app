@@ -376,6 +376,27 @@ describe('typing', () => {
     expect(await toAlice).toEqual([]);
   });
 
+  it('starts again with the next keystroke after the typist sends a message', async () => {
+    const alice = await signUp(server);
+    const bob = await signUp(server);
+    const conversationId = await generalId();
+    const aliceSocket = await connectSocket(server.url, alice.cookie);
+    const bobSocket = await connectSocket(server.url, bob.cookie);
+    const first = nextEvent(bobSocket, 'user_typing');
+    aliceSocket.emit('typing', { conversationId });
+    await first;
+
+    // Bob's client stops showing Alice as typing when her message arrives...
+    const received = nextEvent(bobSocket, 'message');
+    aliceSocket.emit('new_message', { conversationId, content: 'done typing' });
+    await received;
+
+    // ...so her next keystroke, well within the 3 s of her first burst, says so again.
+    const again = nextEvent(bobSocket, 'user_typing');
+    aliceSocket.emit('typing', { conversationId });
+    expect(await again).toEqual({ conversationId, username: alice.username });
+  });
+
   it("is not cleared when another of the typist's tabs disconnects", async () => {
     const alice = await signUp(server);
     const bob = await signUp(server);

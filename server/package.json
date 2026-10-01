@@ -13,6 +13,7 @@
     "migrate": "node-pg-migrate up --envPath ../.env",
     "migrate:down": "node-pg-migrate down --envPath ../.env",
     "migrate:create": "node-pg-migrate create --migration-file-language sql --migration-filename-format index",
+    "seed:demo": "tsx scripts/seedDemo.ts",
     "test:watch": "vitest"
   },
   "keywords": [],
