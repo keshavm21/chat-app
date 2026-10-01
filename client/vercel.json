@@ -1,4 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "git": { "deploymentEnabled": { "phase-2": false, "phase-3": false } },
+  "redirects": [
+    { "source": "/(.*)", "destination": "https://chat-app-7wix.onrender.com/$1", "permanent": false }
+  ]
 }

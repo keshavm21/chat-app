@@ -1,11 +1,16 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 import api from '../api/axios';
+import { DEMO_EMAIL, DEMO_PASSWORD } from '../lib/demo';
 import { getErrorMessage } from '../lib/errors';
 
+const DEMO = { email: DEMO_EMAIL, password: DEMO_PASSWORD };
+
 export default function Login() {
-  const [form, setForm]       = useState({ email: '', password: '' });
+  // /login?demo (the landing page's "Try the demo") starts with the demo account filled in.
+  const [searchParams] = useSearchParams();
+  const [form, setForm]       = useState(() => (searchParams.has('demo') ? DEMO : { email: '', password: '' }));
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
   const { login }  = useAuth();
@@ -16,12 +21,18 @@ export default function Login() {
     if (error) setError('');
   };
 
+  // Fills in the demo account; signing in stays one click away.
+  const fillDemoAccount = () => {
+    setForm(DEMO);
+    setError('');
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
       const { data } = await api.post('/api/auth/login', form);
-      login(data.token, data.user);
+      login(data.user);
       navigate('/chat');
     } catch (err) {
       setError(getErrorMessage(err, 'Login failed. Please try again.'));
@@ -101,6 +112,20 @@ export default function Login() {
             </button>
 
           </form>
+
+          {/* The demo account: anyone may use it (seeded by the server's `npm run seed:demo`). */}
+          <div className="mt-5 pt-5 border-t border-[#1f2937]">
+            <button
+              type="button"
+              onClick={fillDemoAccount}
+              className="w-full py-2.5 bg-white/5 hover:bg-white/10 text-slate-200 font-medium rounded-xl border border-white/10 transition-colors text-sm"
+            >
+              Try the demo account
+            </button>
+            <p className="mt-2 text-center text-xs text-slate-600">
+              Fills in a shared account with channels and messages to explore.
+            </p>
+          </div>
         </div>
 
         <p className="text-center mt-5 text-slate-500 text-sm">

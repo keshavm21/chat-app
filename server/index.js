@@ -5,7 +5,7 @@ import { createApp }   from './app.js';
 import { logger }      from './lib/logger.js';
 
 // ── Express app + HTTP server + Socket.io (see app.js) ─────────────────────────
-const { httpServer, io } = createApp();
+const { httpServer, io, stopTimers } = createApp();
 
 // ── Database connectivity check ────────────────────────────────────────────────
 pool.query('SELECT NOW()', (err, result) => {
@@ -43,6 +43,8 @@ async function shutdown(signal) {
   }, SHUTDOWN_TIMEOUT_MS).unref();
 
   try {
+    // No more sweeps (one in progress finishes: it uses the pool) or rate-limit cleanups.
+    await stopTimers();
     // Disconnects every socket (clients reconnect to the next instance), then stops
     // the HTTP server accepting connections and waits for in-flight requests.
     await io.close();

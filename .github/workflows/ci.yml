@@ -50,6 +50,9 @@ jobs:
       - name: Client — typecheck
         working-directory: client
         run: npm run typecheck
+      - name: Client — test
+        working-directory: client
+        run: npm test
       - name: Client — build
         working-directory: client
         run: npm run build

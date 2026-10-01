@@ -8,10 +8,10 @@ const { Pool } = pg;
 // individual DB_* variables are an alternative.
 const pool = config.database.url
   ? new Pool({
+      // TLS comes from the URL's sslmode alone: config/env.ts requires
+      // sslmode=verify-full (certificate and host name checked) for any database
+      // that is not local; the local Docker database uses sslmode=disable.
       connectionString: config.database.url,
-      // Neon requires TLS (certificate verification is a Phase 2 item). A URL with
-      // `sslmode=disable`, as used for the local Docker database, overrides this.
-      ssl: { rejectUnauthorized: false },
     })
   : new Pool({
       user:     config.database.user,

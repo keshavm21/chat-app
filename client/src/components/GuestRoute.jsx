@@ -2,8 +2,9 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/useAuth';
 
 // Wraps /login and /signup.
-// If already logged in → skip those pages and go straight to /chat.
+// Renders nothing until the session check answers; if already logged in → /chat.
 export default function GuestRoute({ children }) {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <Navigate to="/chat" replace /> : children;
+  const { status } = useAuth();
+  if (status === 'loading') return null;
+  return status === 'authenticated' ? <Navigate to="/chat" replace /> : children;
 }

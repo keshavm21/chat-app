@@ -4,7 +4,7 @@ import request from 'supertest';
 import pool from '../db/connection.js';
 import { errorHandler } from '../http/errorHandler.js';
 import { logger } from '../lib/logger.js';
-import { startServer, type TestServer } from './helpers.js';
+import { api, signUp, startServer, type TestServer } from './helpers.js';
 
 let server: TestServer;
 
@@ -23,8 +23,8 @@ afterAll(async () => {
 describe('REST error envelope', () => {
   it('returns a JSON 404 for an unknown /api route', async () => {
     for (const res of [
-      await request(server.httpServer).get('/api/does-not-exist'),
-      await request(server.httpServer).post('/api/auth/does-not-exist').send({}),
+      await api(server).get('/api/does-not-exist'),
+      await api(server).post('/api/auth/does-not-exist').send({}),
     ]) {
       expect(res.status).toBe(404);
       expect(res.body).toEqual({ error: { code: 'NOT_FOUND', message: 'Route not found.' } });
@@ -32,7 +32,7 @@ describe('REST error envelope', () => {
   });
 
   it('returns 400 INVALID_JSON for a malformed JSON body, without echoing the body', async () => {
-    const res = await request(server.httpServer)
+    const res = await api(server)
       .post('/api/auth/login')
       .set('Content-Type', 'application/json')
       .send('{"email": "a@example.test", "password": "hunter2-SENSITIVE"');
@@ -43,7 +43,7 @@ describe('REST error envelope', () => {
   });
 
   it('keeps the 4xx status of other body errors, such as a body that is too large', async () => {
-    const res = await request(server.httpServer)
+    const res = await api(server)
       .post('/api/auth/login')
       .send({ email: 'a@example.test', password: 'x'.repeat(200_000) });
 
@@ -52,7 +52,7 @@ describe('REST error envelope', () => {
   });
 
   it('returns 400 VALIDATION_ERROR with the first problem and details of all of them when signup fields are missing', async () => {
-    const res = await request(server.httpServer).post('/api/auth/signup').send({ email: 'a@example.test' });
+    const res = await api(server).post('/api/auth/signup').send({ email: 'a@example.test' });
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
@@ -68,7 +68,7 @@ describe('REST error envelope', () => {
   });
 
   it('returns 400 VALIDATION_ERROR when login fields are blank', async () => {
-    const res = await request(server.httpServer).post('/api/auth/login').send({ email: '  ', password: '' });
+    const res = await api(server).post('/api/auth/login').send({ email: '  ', password: '' });
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
@@ -83,12 +83,20 @@ describe('REST error envelope', () => {
     });
   });
 
-  // Without a JSON body, req.body is undefined; destructuring it used to throw (500).
-  it.each(['/api/auth/signup', '/api/auth/login'])('returns 400 VALIDATION_ERROR, not 500, when the body of %s is not JSON', async (path) => {
-    const res = await request(server.httpServer)
+  // A form body used to reach the route as req.body = undefined (a 400 since Phase 0,
+  // a 500 before). Now only JSON gets that far (CSRF, docs/v2-design.md §6).
+  it.each(['/api/auth/signup', '/api/auth/login'])('returns 415 UNSUPPORTED_MEDIA_TYPE when the body of %s is not JSON', async (path) => {
+    const res = await api(server)
       .post(path)
       .set('Content-Type', 'application/x-www-form-urlencoded')
       .send('email=a%40example.test&password=password123');
+
+    expect(res.status).toBe(415);
+    expect(res.body).toEqual({ error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'Request body must be JSON.' } });
+  });
+
+  it.each(['/api/auth/signup', '/api/auth/login'])('returns 400 VALIDATION_ERROR when the JSON body of %s is not an object', async (path) => {
+    const res = await api(server).post(path).send([]);
 
     expect(res.status).toBe(400);
     expect(res.body).toEqual({
@@ -100,34 +108,38 @@ describe('REST error envelope', () => {
     });
   });
 
-  it('returns 403 INVALID_TOKEN for an invalid token', async () => {
-    const res = await request(server.httpServer)
-      .get('/api/messages')
-      .set('Authorization', 'Bearer not-a-valid-token');
-
-    expect(res.status).toBe(403);
-    expect(res.body).toEqual({ error: { code: 'INVALID_TOKEN', message: 'Invalid or expired token.' } });
-  });
-
   it('returns the route’s 500 message, without internal details, when the database fails', async () => {
-    const { token } = (
-      await request(server.httpServer)
-        .post('/api/auth/signup')
-        .send({ username: 'dave', email: 'dave@example.test', password: 'password123' })
-    ).body;
+    const dave = await signUp(server);
     const logged = vi.spyOn(logger, 'error');
-    vi.spyOn(pool, 'query').mockRejectedValueOnce(new Error('db exploded at 10.0.0.5'));
+    const query = pool.query.bind(pool);
+    vi.spyOn(pool, 'query')
+      .mockImplementationOnce(query as never) // the session lookup (requireSession) succeeds
+      .mockRejectedValueOnce(new Error('db exploded at 10.0.0.5'));
 
-    const res = await request(server.httpServer).get('/api/messages').set('Authorization', `Bearer ${token}`);
+    const res = await api(server).get('/api/conversations').set('Cookie', dave.cookie);
 
     expect(res.status).toBe(500);
-    expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch messages.' } });
+    expect(res.body).toEqual({ error: { code: 'INTERNAL_ERROR', message: 'Failed to load conversations.' } });
     expect(res.text).not.toContain('db exploded');
     // The real cause goes to the server log instead.
     expect(logged).toHaveBeenCalledWith(
       { err: expect.objectContaining({ message: 'db exploded at 10.0.0.5' }) },
-      'Error fetching messages',
+      'Error listing conversations',
     );
+  });
+
+  it('returns 400 BAD_REQUEST, without logging an error, for a path parameter that is not valid percent-encoding', async () => {
+    const dave = await signUp(server);
+    const logged = vi.spyOn(logger, 'error');
+
+    for (const res of [
+      await api(server).get('/api/conversations/%E0/messages').set('Cookie', dave.cookie),
+      await api(server).post('/api/conversations/%zz/join').set('Cookie', dave.cookie).send({}),
+    ]) {
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { code: 'BAD_REQUEST', message: 'Malformed URL.' } });
+    }
+    expect(logged).not.toHaveBeenCalled();
   });
 });
 

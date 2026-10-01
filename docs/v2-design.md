@@ -1,6 +1,6 @@
 # Relay — V2 Design
 
-**Status:** Approved. **Phases 0 and 1 are complete (2026-09-27), and Phase 1 is in production** since the cutover the same day (see [§9](#9-implementation-roadmap)). Decisions D1–D17 were approved on 2026-09-27 (see [§10](#10-decision-record)). D6 was revised the same day: existing data is not preserved, and V2 starts with a fresh database. D5 and D9 are **flexible implementation choices**, not hard requirements. One item remains open: how session cookies will work in production while the custom domain is deferred ([§6](#6-security-model)).
+**Status:** Approved. **Phases 0 and 1 are complete (2026-09-27), and Phase 1 is in production** since the cutover the same day; **Phase 2 is complete (2026-09-28) on the `phase-2` branch** and awaits its release (see [§9](#9-implementation-roadmap)). Decisions D1–D17 were approved on 2026-09-27 (see [§10](#10-decision-record)). D6 was revised the same day: existing data is not preserved, and V2 starts with a fresh database. D5 and D9 are **flexible implementation choices**, not hard requirements. The last open item, how session cookies work in production while the custom domain is deferred, was decided in Phase 2: the SPA is served by Express ([§6](#6-security-model), ADR 0005).
 
 **Based on:** `docs/current-state-audit.md` (repository at commit `2e72c1d`).
 
@@ -447,7 +447,10 @@ Why sessions:
 - Logout deletes the session row and disconnects that session's sockets.
 - An in-process sweep every few minutes checks all connected sockets' sessions in one query and disconnects any that are no longer valid. This fixes audit §7.8.
 
-### Cookie topology (open item; D4 deferred)
+### Cookie topology (decided in Phase 2: option 2; D4 still deferred)
+
+**Decided 2026-09-28 (`docs/phase-2-implementation-plan.md` §16, `docs/adr/0005-production-cookie-topology.md`): option 2, serving the SPA from Express**, because it costs nothing. Socket.io uses WebSockets only, so every handshake carries the `Origin` that the handshake check needs. The analysis that led there:
+
 
 - **Local development works as is.** `localhost:5173` and `localhost:5001` are the same site, because ports do not affect site, so `SameSite=Lax` cookies are sent.
 - **Production needs a choice.** `*.vercel.app` and `*.onrender.com` are different sites, so the session cookie would be a third-party cookie. Safari blocks those by default.
@@ -570,11 +573,10 @@ Coverage goals are about behavior (every policy rule and every sync path), not a
 
 ## 8. Deployment strategy
 
-**Topology (D4 and D13 deferred):**
+**Topology (D13 deferred; the D4 cookie question decided in Phase 2):**
 
-- The current providers stay: Vercel serves the SPA, Render runs the API and sockets as one web service, and Neon hosts Postgres.
+- From the Phase 2 release, Render runs one web service that serves the API, the sockets and the built SPA from one origin (§6, ADR 0005); the old Vercel URL redirects there. Neon hosts Postgres. Until then, Vercel serves the SPA.
 - The custom domain is deferred (D4), and hosting-plan decisions are deferred until deployment (D13).
-- The production cookie topology must be chosen before Phase 2 reaches production (§6).
 - Vercel rewrites are believed not to proxy WebSockets, which would rule out using them as a shortcut to a single origin. Verify before relying on it either way.
 
 **Environments:** local (Docker Compose Postgres), CI (ephemeral Postgres), production. No staging environment, to keep cost down; Neon branches could provide one later if needed.
@@ -619,7 +621,7 @@ These parts would keep working unchanged: message ordering and catch-up (owned b
 
 ## 9. Implementation roadmap
 
-Each phase leaves the app working and CI green. Phases 0 and 1 can go to production as soon as they are done. Phase 2 onward reaches production once the cookie topology is chosen (§6); until then, those phases are verified locally and in CI.
+Each phase leaves the app working and CI green. Phases 0 and 1 can go to production as soon as they are done. Phase 2 onward reaches production through Phase 2's release, which also moves production to the chosen cookie topology (§6); until then, those phases are verified locally and in CI.
 
 ### Phase 0 — Foundation (on the existing single-room app) — ✅ complete
 
@@ -650,7 +652,9 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** migrations apply to an empty database; constraint tests (username and email format, content length, the DM pair rule, the channel/DM shape check); the Phase 0 tests updated to the new schema.
 - **Done when:** local and CI databases are built by the new migrations, the single-room app works on the V2 schema, and every constraint is covered by a test. If the minimal D5 level is chosen later, `seq` is dropped in a later migration.
 
-### Phase 2 — Sessions and security baseline
+### Phase 2 — Sessions and security baseline — ✅ complete (release pending)
+
+- **Status:** completed 2026-09-28 on the long-lived `phase-2` branch (draft PR #2), as planned in `docs/phase-2-implementation-plan.md` (decisions in its §16, completion record in its §17). It reaches production through that plan's release runbook (§15). Decisions are recorded in ADR 0004 (server-side sessions and the three CSRF layers) and ADR 0005 (the SPA served by Express, WebSocket only). Signups are limited to 20 per hour per IP instead of 5, so a demo to a group on one network is not blocked.
 
 - **Goal:** revocable authentication.
 - **Changes:**
@@ -662,7 +666,10 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** auth API and CSRF tests; socket rejects missing or revoked sessions; logout disconnects the session's sockets.
 - **Done when:** no token is readable by JavaScript and logout cuts off live sockets.
 
-### Phase 3 — Conversations and authorization (vertical slice)
+### Phase 3 — Conversations and authorization (vertical slice) — ✅ complete (release pending), reduced scope
+
+- **Status:** completed 2026-10-01 on the `phase-3` branch (draft PR #3, which carries Phase 2 too), as planned in `docs/phase-3-implementation-plan.md` (decisions in its §3 and §9, progress and completion record in its §10–§11). The maintainer cut Phases 3–8 down to the visible features (ADR 0006): public channels, minimal private channels, DMs, messaging, typing and unread counts per conversation, a demo account with seeded channels, and one release of Phases 2 and 3 from a fresh database. Messages are still sent over the socket (not D2's REST writes), and sync is at the simplified level of §5. Of Phase 4, the per-conversation send, keyset pagination, the client's decomposition with "load older", and the removal of the single-room API were built here; of Phase 6, unread counts and the per-conversation typing relay. There is no service or policy layer: routes call repositories, and the only rule is membership (404 to non-members).
+
 
 - **Goal:** channels, DMs and memberships end to end.
 - **Changes:**
@@ -674,7 +681,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** the full authorization matrix; the concurrent DM-creation race; a non-member receives nothing.
 - **Done when:** users can create, join and leave conversations, and every permission rule is tested.
 
-### Phase 4 — Messaging in conversations
+### Phase 4 — Messaging in conversations — not scheduled (see Phase 3 and ADR 0006)
 
 - **Goal:** per-conversation messaging with ordering guarantees.
 - **Changes:**
@@ -686,7 +693,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** parallel sends produce gapless `seq`; retry does not duplicate; removed members stop receiving; pagination edges.
 - **Done when:** audit issues §4.3 and §4.5 cannot be reproduced.
 
-### Phase 5 — Sync and resilience
+### Phase 5 — Sync and resilience — not scheduled (see Phase 3 and ADR 0006)
 
 - **Goal:** correctness through disconnects.
 - **D5 decision point:** implement the full model (`rev`, the changes endpoint, gap detection) or one of the simpler levels in §5, and record the choice in an ADR.
@@ -695,7 +702,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** unit tests of the merge logic with shuffled and duplicated events; socket tests with dropped events; Playwright offline/online test; a server restart during an active chat.
 - **Done when:** audit issue §4.4 cannot be reproduced, a restart mid-conversation loses nothing, and all five guarantees in §5 hold.
 
-### Phase 6 — Awareness
+### Phase 6 — Awareness — not scheduled (see Phase 3 and ADR 0006)
 
 - **Goal:** unread counts, read state, typing, presence.
 - **Changes:** read endpoint with `GREATEST`; `read:updated`; unread computed from counters; stateless typing relay; presence map with a grace period.
@@ -703,7 +710,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** cross-tab read sync; monotonic read under concurrent updates; multi-tab presence; typing throttle.
 - **Done when:** the audit §5 presence and typing issues are resolved.
 
-### Phase 7 — Message editing, deletion and moderation
+### Phase 7 — Message editing, deletion and moderation — not scheduled (see Phase 3 and ADR 0006)
 
 - **Goal:** editing and deletion (D11) and channel moderation.
 - **Changes:** PATCH and DELETE message endpoints (which bump `rev` in the full model); `message:updated`; edit and delete in the UI; admin deletes and member removal in the UI.
@@ -711,7 +718,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** a client that was offline during an edit or delete sees the result after reconnecting; policy tests for editing own messages and deleting others' messages.
 - **Done when:** edits and deletes reach every client, including ones that were offline.
 
-### Phase 8 — Hardening and launch
+### Phase 8 — Hardening and launch — not scheduled (see Phase 3 and ADR 0006)
 
 - **Goal:** production-ready and portfolio-ready.
 - **Changes:**
@@ -743,7 +750,7 @@ All decisions were approved on 2026-09-27.
 | D1 | Conversation types | Public channels, private channels and 1:1 DMs | No ad hoc group DMs (§1, B) |
 | D2 | Write path | REST writes + Socket.IO push | `typing` is the only client-to-server event (§5) |
 | D3 | Auth model | Server-side sessions with secure httpOnly cookies | JWT removed (§6) |
-| D4 | Custom domain | Deferred | Production cookie topology is an open item (§6) |
+| D4 | Custom domain | Deferred | The production cookie topology was decided in Phase 2 without it: the SPA is served by Express (§6, ADR 0005) |
 | D5 | Ordering and sync | **Flexible.** Per-conversation `seq`/`rev` if practical | The guarantees in §5 are required; the mechanism may be simplified or skipped |
 | D6 | Existing data | Not preserved; V2 starts with a fresh database (revised 2026-09-27) | Fresh-database approach (§4), Phase 1 |
 | D7 | TypeScript | Incremental; no shared package initially | Contract types on each side (§3, §7) |
@@ -767,7 +774,7 @@ All decisions were approved on 2026-09-27.
 | typescript, tsx | Planned (Phase 0) | D7 |
 | vitest, supertest | Planned (Phase 0) | Unit, API, migration and socket integration tests |
 | SQL migration runner | Phase 0 | A small script or a lightweight tool (D8) |
-| helmet, express-rate-limit | Planned (Phase 2) | Security headers and rate limiting are easy to get subtly wrong by hand |
+| helmet, express-rate-limit | Added (Phase 2) | Security headers and rate limiting are easy to get subtly wrong by hand |
 | Playwright | Planned (Phase 4) | Multi-tab and reconnect behavior can only be tested in real browsers |
 | React Testing Library | Only if needed | Component tests are selective |
 | TanStack Query, Zustand | Only if needed | Triggers in §3 (D9) |
@@ -812,5 +819,7 @@ All decisions were approved on 2026-09-27.
 1. ~~Implement Phase 0~~ — done 2026-09-27 (`docs/phase-0-implementation-plan.md`, §16).
 2. ~~Write and approve `docs/phase-1-implementation-plan.md` and implement Phase 1~~ — done 2026-09-27 on the `phase-1` branch (that plan's §15).
 3. ~~Run the Phase 1 production cutover~~ — done 2026-09-27 (the Phase 1 plan's §15).
-4. **Write and approve `docs/phase-2-implementation-plan.md`** before any Phase 2 code (handoff in the Phase 1 plan's §16).
-5. **Choose the production cookie topology (§6)** before Phase 2 is deployed to production.
+4. ~~Write and approve `docs/phase-2-implementation-plan.md`, choose the production cookie topology and implement Phase 2~~ — done 2026-09-28 on the `phase-2` branch (that plan's §17).
+5. ~~Release Phase 2~~ — postponed (2026-09-30), to be released together with Phase 3 (item 7).
+6. ~~Write and approve `docs/phase-3-implementation-plan.md` and implement Phase 3~~ — done 2026-10-01 on the `phase-3` branch, with Phases 4–8 cut to their visible parts (ADR 0006; that plan's §11).
+7. **Release Phases 2 and 3 together** when the maintainer decides, from a fresh database, following the Phase 3 plan's §8 (which replaces the Phase 2 plan's §15).

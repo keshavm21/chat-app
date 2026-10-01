@@ -1,15 +1,18 @@
 // server/lib/logger.ts
 // The server's single logger: JSON lines on stdout (pino defaults). Use it instead of console.*.
 // Log errors as `logger.error({ err }, 'message')` so pino serializes the message and stack.
+import type { IncomingMessage } from 'http';
 import pino, { type LoggerOptions } from 'pino';
+import type { Options as HttpLoggerOptions } from 'pino-http';
 import { config } from '../config/env.js';
 
 export const loggerOptions = {
   level: config.logLevel,
   redact: {
     paths: [
-      'req.headers.authorization', // JWT bearer token
-      'req.headers.cookie',        // browsers send every localhost cookie to every port
+      'req.headers.authorization', // unused by the app since sessions, but never log credentials
+      'req.headers.cookie',        // the session token; browsers also send every localhost cookie to every port
+      'res.headers["set-cookie"]', // the session token, set at signup and login
       'password',
       '*.password',
       '*.*.password',              // e.g. { req: { body: { password } } }
@@ -20,3 +23,12 @@ export const loggerOptions = {
 } satisfies LoggerOptions;
 
 export const logger = pino(loggerOptions);
+
+/**
+ * pino-http's options besides `logger`. Each request's log lines carry `ip`, the client
+ * IP as Express sees it (req.ip, which honours TRUST_PROXY): the rate limits key on it,
+ * so the logs show whether the proxy setting is right.
+ */
+export const httpLoggerOptions = {
+  customProps: (req: IncomingMessage) => ({ ip: (req as IncomingMessage & { ip?: string }).ip }),
+} satisfies HttpLoggerOptions;

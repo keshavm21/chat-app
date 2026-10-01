@@ -16,19 +16,40 @@ const rootEnv = basename(dirname(here)) === 'dist' ? '../../../.env' : '../../.e
 dotenv.config({ path: resolve(here, rootEnv), quiet: true });
 
 // ── Schema ─────────────────────────────────────────────────────────────────────
-// An empty value (e.g. `JWT_SECRET=` in .env) is treated the same as an unset one.
+// An empty value (e.g. `PORT=` in .env) is treated the same as an unset one.
 const blankAsUnset = <T extends z.ZodType>(schema: T) =>
   z.preprocess((value) => (value === '' ? undefined : value), schema);
 
 const port = z.coerce.number().int().min(1).max(65535);
 const DB_VARS = ['DB_USER', 'DB_HOST', 'DB_NAME', 'DB_PASSWORD'] as const;
 
+// Hosts that need no TLS: the local Docker database ('' is a Unix socket).
+const LOCAL_DB_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]', '']);
+
+/**
+ * What is wrong with a DATABASE_URL, if anything. A database that is not local must say
+ * sslmode=verify-full, so the connection checks the server's certificate and host name
+ * (pg treats sslmode=require the same today, but has announced that it will stop).
+ */
+function databaseUrlProblem(url: string): string | undefined {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return 'Must be a connection URL, e.g. postgres://user:password@host/database';
+  }
+  if (LOCAL_DB_HOSTS.has(parsed.hostname)) return undefined;
+  if (parsed.searchParams.get('sslmode') !== 'verify-full') {
+    return 'A database that is not local must use sslmode=verify-full';
+  }
+  return undefined;
+}
+
 const schema = z
   .object({
     NODE_ENV:     blankAsUnset(z.enum(['development', 'production', 'test']).default('development')),
     PORT:         blankAsUnset(port.default(5001)),
     CLIENT_URL:   blankAsUnset(z.url().default('http://localhost:5173')),
-    JWT_SECRET:   blankAsUnset(z.string({ error: 'Required' })),
     DATABASE_URL: blankAsUnset(z.string().optional()),
     DB_USER:      blankAsUnset(z.string().optional()),
     DB_HOST:      blankAsUnset(z.string().optional()),
@@ -36,10 +57,17 @@ const schema = z
     DB_PASSWORD:  blankAsUnset(z.string().optional()),
     DB_PORT:      blankAsUnset(port.default(5432)),
     LOG_LEVEL:    blankAsUnset(z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info')),
+    // How many proxies in front of the server to trust for X-Forwarded-For (Express's
+    // `trust proxy`): 0 trusts none, so a client cannot choose its own IP.
+    TRUST_PROXY:  blankAsUnset(z.coerce.number().int().min(0).default(0)),
   })
   .superRefine((env, ctx) => {
     // DATABASE_URL takes precedence; otherwise every DB_* connection variable is needed.
-    if (env.DATABASE_URL) return;
+    if (env.DATABASE_URL) {
+      const problem = databaseUrlProblem(env.DATABASE_URL);
+      if (problem) ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: problem });
+      return;
+    }
     const missing = DB_VARS.filter((name) => !env[name]);
     if (missing.length === DB_VARS.length) {
       ctx.addIssue({ code: 'custom', path: ['DATABASE_URL'], message: `Required (or set ${DB_VARS.join(', ')})` });
@@ -73,8 +101,8 @@ export function parseEnv(env: Record<string, string | undefined>) {
     nodeEnv:   e.NODE_ENV,
     port:      e.PORT,
     clientUrl: e.CLIENT_URL,
-    jwtSecret: e.JWT_SECRET,
     logLevel:  e.LOG_LEVEL,
+    trustProxy: e.TRUST_PROXY,
     // `url` wins when set; the DB_* fields are then unused (same precedence as before).
     database: Object.freeze({
       url:      e.DATABASE_URL,

@@ -18,7 +18,7 @@ beforeEach(async () => {
         RAISE EXCEPTION 'Refusing to truncate tables in non-test database %', current_database();
       END IF;
     END $$;
-    TRUNCATE users, conversations, direct_conversations, conversation_members, messages RESTART IDENTITY CASCADE;
+    TRUNCATE users, conversations, direct_conversations, conversation_members, messages, sessions RESTART IDENTITY CASCADE;
     INSERT INTO conversations (type, visibility, name) VALUES ('channel', 'public', 'general');
   `);
 });

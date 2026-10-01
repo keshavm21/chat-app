@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import pool from '../db/connection.js';
-import { EMAIL_MAX_LENGTH, MESSAGE_MAX_LENGTH, USERNAME_PATTERN } from '../lib/limits.js';
+import {
+  CHANNEL_NAME_PATTERN,
+  EMAIL_MAX_LENGTH,
+  MESSAGE_MAX_LENGTH,
+  USER_AGENT_MAX_LENGTH,
+  USERNAME_PATTERN,
+} from '../lib/limits.js';
 
-// Migration 0002's constraints, tested directly in the database without the app.
+// The constraints of migrations 0002 and 0003, tested directly in the database without the app.
 // Every test starts from the per-test reset (test/setup.ts): empty tables and #general.
 
 type Row = Record<string, unknown>;
@@ -59,9 +65,13 @@ const factories: Record<string, (overrides?: Row) => Promise<Row>> = {
       ...overrides,
     });
   },
+  sessions: async (overrides = {}) =>
+    insert('sessions', {
+      token_hash: randomBytes(32), user_id: (await user()).id, expires_at: new Date(Date.now() + 60_000), ...overrides,
+    }),
 };
 const { users: user, conversations: conversation, direct_conversations: directConversation } = factories;
-const { conversation_members: member, messages: message } = factories;
+const { conversation_members: member, messages: message, sessions: session } = factories;
 
 /** Whether the insert succeeds; a rejection must come from `constraint`, any other error fails the test. */
 async function accepted(insertion: Promise<unknown>, constraint: string): Promise<boolean> {
@@ -150,15 +160,20 @@ describe('conversations', () => {
     ['General', false],
     ['has space', false],
     ['under_score', false],
-  ])('channel name %j: accepted = %s', async (name, expected) => {
+  ])('channel name %j: accepted = %s, the same as CHANNEL_NAME_PATTERN (lib/limits.ts)', async (name, expected) => {
+    expect(CHANNEL_NAME_PATTERN.test(name)).toBe(expected);
     expect(await accepted(conversation({ name }), 'conversations_name_format')).toBe(expected);
   });
 
-  it('rejects a second channel with the same name, while DMs have no name', async () => {
+  it("rejects a second public channel with the same name; private channels' names need not be unique (0004)", async () => {
     await expect(conversation({ name: 'general' })).rejects.toMatchObject({
-      code: UNIQUE, constraint: 'conversations_channel_name_key',
+      code: UNIQUE, constraint: 'conversations_public_channel_name_key',
     });
 
+    // A private channel may share its name with a public one, or with another private one,
+    // so trying a name never reveals a private channel.
+    await conversation({ name: 'general', visibility: 'private' });
+    await conversation({ name: 'general', visibility: 'private' });
     await conversation({ type: 'dm', visibility: null, name: null });
     await conversation({ type: 'dm', visibility: null, name: null });
   });
@@ -283,6 +298,40 @@ describe('messages', () => {
   });
 });
 
+describe('sessions', () => {
+  it('only stores 32-byte token hashes (a SHA-256)', async () => {
+    for (const [length, expected] of [[32, true], [0, false], [31, false], [33, false]] as const) {
+      expect(await accepted(session({ token_hash: randomBytes(length) }), 'sessions_token_hash_length'), `${length} bytes`).toBe(expected);
+    }
+  });
+
+  it(`accepts user agents up to USER_AGENT_MAX_LENGTH (${USER_AGENT_MAX_LENGTH}, lib/limits.ts) characters, or none`, async () => {
+    for (const [userAgent, expected] of [
+      [null, true],
+      ['x'.repeat(USER_AGENT_MAX_LENGTH), true],
+      ['x'.repeat(USER_AGENT_MAX_LENGTH + 1), false],
+    ] as const) {
+      expect(await accepted(session({ user_agent: userAgent }), 'sessions_user_agent_length')).toBe(expected);
+    }
+  });
+
+  it('allows each token hash once', async () => {
+    const row = await session();
+
+    await expect(session({ token_hash: row.token_hash })).rejects.toMatchObject({ code: UNIQUE, constraint: 'sessions_pkey' });
+  });
+
+  it('is deleted with its user', async () => {
+    const row = await session();
+    await session({ user_id: row.user_id });
+    const other = await session();
+
+    await pool.query('DELETE FROM users WHERE id = $1', [row.user_id]);
+
+    expect((await pool.query('SELECT * FROM sessions')).rows).toEqual([other]);
+  });
+});
+
 describe('NOT NULL columns', () => {
   it.each([
     ['users', 'username'], ['users', 'email'], ['users', 'display_name'], ['users', 'password_hash'],
@@ -293,6 +342,8 @@ describe('NOT NULL columns', () => {
     ['conversation_members', 'last_read_seq'], ['conversation_members', 'joined_at'],
     ['messages', 'conversation_id'], ['messages', 'seq'], ['messages', 'author_id'], ['messages', 'client_id'],
     ['messages', 'content'], ['messages', 'created_at'],
+    ['sessions', 'token_hash'], ['sessions', 'user_id'], ['sessions', 'created_at'], ['sessions', 'last_seen_at'],
+    ['sessions', 'expires_at'],
   ])('%s.%s rejects NULL', async (table, column) => {
     await expect(factories[table]({ [column]: null })).rejects.toMatchObject({ code: NOT_NULL, column });
   });

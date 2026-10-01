@@ -1,6 +1,7 @@
 # Relay — Phase 2 Implementation Plan
 
-**Status:** 📝 **Draft, awaiting approval.** The questions in [§16](#16-questions-to-settle-at-approval) need the maintainer's decisions. No Phase 2 code before approval.
+**Status:** ✅ **Complete on the `phase-2` branch** (2026-09-28). **Release postponed** (2026-09-30): the maintainer decided to release Phase 2 together with Phase 3 (`docs/phase-3-implementation-plan.md` §8), from a fresh database. Step 1 of §15 had already migrated production (only `0003`, harmless to Phase 1), and the production database password was reset after it leaked. See [§17 Completion record](#17-completion-record) and [§18 Handoff](#18-handoff-to-phase-3).
+**History:** approved 2026-09-28; the maintainer's decisions on the open questions are recorded in [§16](#16-decisions-confirmed-at-approval).
 **Scope source:** `docs/v2-design.md` (§6 security model, §8 deployment, §9 Phase 2; decisions D3, D4, D15, D17), the deferred list in `docs/phase-0-implementation-plan.md` §15, and the handoff in `docs/phase-1-implementation-plan.md` §16.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
 
@@ -14,7 +15,7 @@ Replace the 7-day JWT in `localStorage` with revocable server-side sessions, and
 - logout disconnects that session's sockets at once, and a periodic sweep disconnects sockets whose session has expired or been revoked (audit §7.8);
 - CSRF defenses in three layers: `SameSite=Lax`, an `Origin` check on state-changing requests and on the socket handshake, and JSON-only request bodies;
 - password rules and the login timing fix (audit §7.4, §7.6); rate limits on login and signup (the auth part of audit §7.1); helmet; `trust proxy`; database TLS verification pinned explicitly (audit §7.9);
-- a production cookie topology (§16, question 1), so that Phase 2 can go to production at the end of the phase.
+- a production cookie topology: the SPA served by Express (§16, decision 1), so that Phase 2 can go to production at the end of the phase.
 
 **Done when** (design §9): no token is readable by JavaScript, and logout cuts off live sockets.
 
@@ -27,9 +28,9 @@ Phase 2 adds no conversation features, rooms other than session rooms, or messag
 | # | Decision | How this plan applies it |
 |---|---|---|
 | 1 | **Server-side sessions** (D3), with the defaults in design §6 | A `sessions` table (migration `0003`), a random token in an httpOnly cookie, SHA-256 hash stored, 30-day absolute and 7-day idle expiry, a new session on every login. JWT and `JWT_SECRET` are removed entirely (M1). |
-| 2 | **Production cookie topology** (the D4 open item) | **To decide at approval** (§16, question 1). M0–M4 work the same under either option, because local development is same-site already. M5 implements the chosen option. |
+| 2 | **Production cookie topology** (the D4 open item) | **Serve the SPA from Express** (option A, chosen at approval, §16). M0–M4 do not depend on it, because local development is same-site already. M5 implements it. |
 | 3 | **Production stays on Phase 1 until Phase 2 is complete**, as in Phase 1 | Render and Vercel deploy `main`, so Phase 2 is built on a long-lived `phase-2` branch with a draft PR and reaches production through the release runbook (§15). |
-| 4 | **Minimal dependencies** (D17) | Added: `helmet` and `express-rate-limit` (both planned for Phase 2 in D17), and `cookie` (0.7.2, already installed through express and engine.io) as a direct dependency for parsing the cookie in both Express and the socket handshake. Removed: `jsonwebtoken`. Nothing else. |
+| 4 | **Minimal dependencies** (D17) | Added: `helmet` and `express-rate-limit` (both planned for Phase 2 in D17), and `cookie` as a direct dependency for parsing the cookie in both Express and the socket handshake. It is `cookie` 2.x, not the 0.7.2 that express and engine.io bring: 0.7.2 has no TypeScript types, while 2.x ships its own and is ESM like the server (M1). Removed: `jsonwebtoken`. Nothing else. |
 | 5 | **Expand, then contract** (design §7) | `0003` only adds a table, so it can be applied to production before the release while Phase 1 is still running. The code stops using JWT in the same release, and the `JWT_SECRET` variable is deleted from Render after it. |
 
 ---
@@ -48,13 +49,13 @@ Phase 2 adds no conversation features, rooms other than session rooms, or messag
 
 ## 4. Workflow and safety rules
 
-- [ ] **All Phase 2 commits go to the long-lived `phase-2` branch, never to `main`.** A draft pull request `phase-2 → main` ("do not merge until the release") runs CI on every push. Phase 2 reaches production only through the release runbook (§15).
-- [ ] One task per commit, with lint, typecheck, tests and build before each commit. A milestone is done when CI is green on the branch and its verification and definition of done are met; the next milestone starts only after the maintainer approves.
-- [ ] Production fixes go to `main`, and `main` is merged into `phase-2` afterwards.
-- [ ] Never connect to or modify the production database. `0003` runs against `relay_dev`, `relay_test`, CI's database and scratch databases; production gets it only in the release runbook, run by the maintainer.
-- [ ] Tests only run against a local `*_test` database, and never sleep: the session sweep is a function tests call directly, and expiry is tested by setting `expires_at` or `last_seen_at` in the database.
-- [ ] Session tokens never appear in logs, response bodies or the database: only in the `Set-Cookie` and `Cookie` headers (both redacted from logs); the database stores their SHA-256.
-- [ ] Limits shared by code and tests (password length, session lifetimes, rate limits, sweep interval) live in `server/lib/limits.ts`.
+- [x] **All Phase 2 commits go to the long-lived `phase-2` branch, never to `main`.** A draft pull request `phase-2 → main` ("do not merge until the release") runs CI on every push. Phase 2 reaches production only through the release runbook (§15).
+- [x] One task per commit, with lint, typecheck, tests and build before each commit. A milestone is done when CI is green on the branch and its verification and definition of done are met; the next milestone starts only after the maintainer approves.
+- [x] Production fixes go to `main`, and `main` is merged into `phase-2` afterwards.
+- [x] Never connect to or modify the production database. `0003` runs against `relay_dev`, `relay_test`, CI's database and scratch databases; production gets it only in the release runbook, run by the maintainer.
+- [x] Tests only run against a local `*_test` database, and never sleep: the session sweep is a function tests call directly, and expiry is tested by setting `expires_at` or `last_seen_at` in the database.
+- [x] Session tokens never appear in logs, response bodies or the database: only in the `Set-Cookie` and `Cookie` headers (both redacted from logs); the database stores their SHA-256.
+- [x] Limits shared by code and tests (password length, session lifetimes, rate limits, sweep interval) live in `server/lib/limits.ts`.
 
 ---
 
@@ -72,7 +73,7 @@ Each milestone ends with the app working locally and CI green on `phase-2`. They
 | **M5 — Production topology and database TLS** | The chosen topology, `sslmode=verify-full` enforced, the release runbook ready | M4 |
 | **M6 — Verification and handoff** | Fresh-clone verification, ADRs, docs, completion record | M5 |
 
-Why this order: M1 is the one unavoidable big step. Once the server stops returning a token, the client must switch at the same time, so both change together. M2–M4 are independent hardening steps on a working cookie-based app. M5 comes last because it depends on question 1 and has to carry everything before it to production.
+Why this order: M1 is the one unavoidable big step. Once the server stops returning a token, the client must switch at the same time, so both change together. M2–M4 are independent hardening steps on a working cookie-based app. M5 comes last because it changes how production is deployed and has to carry everything before it to production.
 
 ---
 
@@ -82,7 +83,7 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 
 **Steps**
 1. Commit this plan (once approved) to `main`.
-2. Create `phase-2` from `main`. Its first commit disables Vercel deployments of the branch (§16, question 3): `"git": { "deploymentEnabled": { "phase-2": false } }` in `client/vercel.json`. That commit also gives GitHub the change it needs before it will open a pull request (in Phase 1 an empty commit was needed).
+2. Create `phase-2` from `main`. Its first commit disables Vercel deployments of the branch (§16, decision 3): `"git": { "deploymentEnabled": { "phase-2": false } }` in `client/vercel.json`. That commit also gives GitHub the change it needs before it will open a pull request (in Phase 1 an empty commit was needed).
 3. Push `phase-2` and open a draft pull request `phase-2 → main` titled "Phase 2: sessions and security baseline — do not merge until the release".
 
 **Verification**
@@ -90,8 +91,8 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - GitHub shows no Vercel deployment for `phase-2`, and the maintainer confirms that Render deployed nothing.
 
 **Definition of done**
-- [ ] `phase-2` exists with a draft PR and green CI.
-- [ ] Pushes to `phase-2` deploy nothing.
+- [x] `phase-2` exists with a draft PR and green CI. *(PR #2; the first commit, `f3d603f`, passed CI.)*
+- [x] Pushes to `phase-2` deploy nothing. *(Vercel created no deployment for the branch; the maintainer confirmed that Render builds only `main`.)*
 
 ---
 
@@ -144,8 +145,8 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - Manually, in the browser: signup, a reload keeps you logged in (via `/me`), logout, login again. `localStorage` holds no `relay_*` keys, and `document.cookie` does not show the session cookie.
 
 **Definition of done**
-- [ ] No token is readable by JavaScript: nothing in `localStorage` or any response body, and the cookie is `HttpOnly`.
-- [ ] No JWT code, dependency or configuration remains.
+- [x] No token is readable by JavaScript: nothing in `localStorage` or any response body, and the cookie is `HttpOnly`. *(`test/sessions.test.ts`; in headless Chrome, signup's body is only `{ user }`, `document.cookie` and `localStorage` hold no `relay_*`, and the dev server's log shows every `Cookie` and `Set-Cookie` as `[Redacted]`.)*
+- [x] No JWT code, dependency or configuration remains. *(`jsonwebtoken`, `@types/jsonwebtoken`, `JWT_SECRET` and `middleware/verifyToken.js` are removed; Render's `JWT_SECRET` is deleted at the release, §15 step 7.)*
 
 ---
 
@@ -167,8 +168,8 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - Shutdown stops the sweep: after `close()`, no timer keeps the process alive.
 
 **Definition of done**
-- [ ] Logout cuts off the live sockets of that session.
-- [ ] Sockets of expired or revoked sessions are disconnected by the sweep.
+- [x] Logout cuts off the live sockets of that session. *(`test/sessionLifecycle.test.ts`; in headless Chrome, signing out in one tab closed the other tab's WebSocket.)*
+- [x] Sockets of expired or revoked sessions are disconnected by the sweep. *(`test/sessionLifecycle.test.ts`, including the real 5-minute timer under fake intervals; a SIGTERM with a socket open still shuts down cleanly.)*
 
 ---
 
@@ -189,7 +190,7 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - The test helpers send the allowed `Origin` and JSON by default.
 
 **Definition of done**
-- [ ] Every state-changing request and every socket handshake is checked against the allowed origin.
+- [x] Every state-changing request and every socket handshake is checked against the allowed origin. *(`test/security.test.ts`; in headless Chrome, a page on `localhost:5555`, which is same-site and so gets the session cookie, had its `text/plain` fetch and form post refused with 403 and its WebSocket refused, while the app kept working.)*
 
 ---
 
@@ -197,7 +198,7 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 
 **Objective:** brute force and weak passwords are limited, and login timing no longer reveals which emails exist (audit §7.1 auth part, §7.4, §7.6).
 
-**Passwords** (signup only; §16, question 4)
+**Passwords** (signup only; §16, decision 4)
 - At least 8 characters and at most 72 bytes in UTF-8 (bcrypt's limit), rejected with 400 `VALIDATION_ERROR`, never silently truncated. Login still accepts any non-empty password, so existing accounts keep working.
 - Signup form: `minLength` 8 and the placeholder "At least 8 characters". The byte limit is left to the server.
 
@@ -206,7 +207,7 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 
 **Rate limits** (`express-rate-limit`, in-memory store; acceptable on one instance, D15/D16)
 - Login: 10 **failed** attempts per 15 minutes per IP and normalized email. Successful logins do not count.
-- Signup: 5 per hour per IP.
+- Signup: 20 per hour per IP (§16, decision 5).
 - Over the limit: 429 `RATE_LIMITED` "Too many attempts. Please try again later." in the error envelope, with `Retry-After`.
 - The limits come from `lib/limits.ts` and are an option of `createApp`, so each test server has fresh counters and a test can set low limits.
 
@@ -216,11 +217,11 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 **Tests**
 - Passwords of 8 characters and of exactly 72 bytes are accepted; 7 characters and 73 bytes (multi-byte characters) are rejected.
 - Login for an unknown email calls `bcrypt.compare` (spy) and answers the usual 401.
-- The 11th failed login for one IP and email gets 429 with `Retry-After`, while another email and a correct password still get through. The 6th signup from one IP gets 429.
+- The 11th failed login for one IP and email gets 429 with `Retry-After`, while another email and a correct password still get through. The 21st signup from one IP gets 429.
 - With `TRUST_PROXY=0`, a spoofed `X-Forwarded-For` does not change the rate-limit key. With `TRUST_PROXY=1`, the client IP comes from the header.
 
 **Definition of done**
-- [ ] Password rules, the timing fix and the login and signup limits are in place and tested.
+- [x] Password rules, the timing fix and the login and signup limits are in place and tested. *(`test/auth.test.ts`, `test/rateLimits.test.ts`, `test/env.test.ts`, `test/logger.test.ts`; 194 server tests. Once an IP and email are limited, even the correct password gets 429, so the limit cannot be guessed around; successful logins before that do not count.)*
 
 ---
 
@@ -234,57 +235,52 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - The release changes Render's `DATABASE_URL` from `sslmode=require` to `sslmode=verify-full`, keeping `channel_binding=require`.
 - Tests: the new configuration rule (`env.test.ts`).
 
-**Topology:** implement the option chosen in §16, question 1.
-
-*Option A — serve the SPA from Express (recommended)*
+**Topology: serve the SPA from Express** (option A, chosen at approval, §16)
 - Express serves `client/dist`: hashed `/assets/*` with a long cache, `index.html` with `no-cache`, and `index.html` for any other `GET` outside `/api` and `/socket.io` (this replaces the Vercel rewrite).
 - The client uses relative URLs when `VITE_API_URL` is unset (Axios `baseURL` empty, `io()` without a URL). `vite.config` proxies `/api` and `/socket.io` (with WebSockets) to `localhost:5001`, so development has the same single origin as production.
 - With one origin everywhere, the `cors` middleware and Socket.io's `cors` option are removed. The allowed origin (M3) is the app's public URL, still read from `CLIENT_URL`.
+- *Done in M5:* `VITE_API_URL` is no longer read at all. Without CORS, an API on another origin cannot work, and a leftover `VITE_API_URL=http://localhost:5001` in `client/.env.local` would have quietly broken development.
+- *Found in M3, decided at M5 (§16, decision 7):* Socket.io uses the WebSocket transport only, on the server and the client. A same-origin HTTP long-polling handshake is a `GET`, which browsers send without `Origin`, so the M3 handshake check would refuse it; a WebSocket handshake always carries `Origin`.
 - Render builds both projects (settings in §15). The Vercel project becomes a redirect to the Render URL (a `redirects` rule in `client/vercel.json`) or is removed. The README's demo link changes.
 - Tests, against a small fixture directory so that the server tests need no client build: `/chat` returns `index.html`, `/api/unknown` still returns the JSON 404, and an asset is served with its cache header.
 
-*Option B — custom domain*
-- The maintainer buys a domain and points `app.<domain>` at Vercel and `api.<domain>` at Render; both issue the TLS certificates.
-- Configuration only: `VITE_API_URL=https://api.<domain>` and `CLIENT_URL=https://app.<domain>`. The cookie stays host-only on `api.<domain>`, which is the same site as `app.<domain>`, so `SameSite=Lax` cookies go with the app's requests and the WebSocket.
-- `relay-chat-app.vercel.app` redirects to `app.<domain>` (Vercel domain settings).
-
 **Verification**
-- The production build runs locally with `NODE_ENV=production` and the chosen topology (option A: served by Express; option B: the same configuration against `localhost`). In headless Chrome, login sets `__Host-relay_session` (Chrome treats `localhost` as a secure context), a reload keeps you logged in, and the socket connects.
+- The production build runs locally with `NODE_ENV=production`, the client served by Express. In headless Chrome, login sets `__Host-relay_session` (Chrome treats `localhost` as a secure context), a reload keeps you logged in, and the socket connects.
 
 **Definition of done**
-- [ ] The chosen topology works locally in production mode.
-- [ ] `sslmode=verify-full` is enforced for non-local databases.
-- [ ] The release runbook (§15) is reviewed and ready.
+- [x] The chosen topology works locally in production mode. *(`test/spa.test.ts`; the production build with `NODE_ENV=production` in headless Chrome: `__Host-relay_session` with `HttpOnly`, `Secure` and `SameSite=Lax`, one origin for every request, the socket over WebSocket, a reload of `/chat` still logged in, `index.html` `no-cache` and hashed assets immutable. Development through the Vite proxy works too.)*
+- [x] `sslmode=verify-full` is enforced for non-local databases. *(`test/env.test.ts`.)*
+- [x] The release runbook (§15) is reviewed and ready. *(Reviewed in M6 against the finished code and the Render URL; the Vercel redirect is in `client/vercel.json`.)*
 
 ---
 
 ## 12. Milestone 6 — Verification and handoff
 
 **Steps**
-1. **ADRs:** `docs/adr/0004-server-side-sessions.md` (D3: sessions instead of JWT, the cookie, the three CSRF layers) and `docs/adr/0005-production-cookie-topology.md` (the D4 choice from §16, question 1).
+1. **ADRs:** `docs/adr/0004-server-side-sessions.md` (D3: sessions instead of JWT, the cookie, the three CSRF layers) and `docs/adr/0005-production-cookie-topology.md` (the D4 choice from §16, decision 1).
 2. **Docs:** CLAUDE.md (the auth architecture, environment variables, topology, test helpers), README (auth, deployment, environment variables), `docs/v2-design.md` §9 (Phase 2 status), this plan.
 3. **Fresh-clone verification:** follow the README from a fresh clone of `phase-2` and a clean Docker volume, as in Phases 0 and 1.
 4. **Completion record** in this plan, and the release runbook (§15) reviewed.
 
 **Definition of done**
-- [ ] Every item in §13 is checked.
-- [ ] The maintainer decides when to run the release (§15).
+- [x] Every item in §13 is checked.
+- [ ] The maintainer decides when to run the release (§15). *(Open: the release is the maintainer's decision.)*
 
 ---
 
 ## 13. Final Phase 2 verification checklist
 
-- [ ] `phase-2` CI is green: lint, typecheck, tests and build for both projects.
-- [ ] A fresh clone and clean Docker volume build `relay_dev` and `relay_test` from `0001`–`0003`; `0003` rolls back and re-applies cleanly.
-- [ ] No token is readable by JavaScript: none in `localStorage` or response bodies, and the cookie is `HttpOnly` (`Secure` and `__Host-` in production mode).
-- [ ] Logout disconnects that session's sockets; the sweep disconnects expired and revoked sessions.
-- [ ] Cross-origin state-changing requests and socket handshakes are rejected; bodies must be JSON.
-- [ ] Password rules, the login timing fix and the login and signup rate limits are tested.
-- [ ] No session token appears in logs; `Set-Cookie` and `Cookie` are redacted.
-- [ ] No JWT code, dependency or configuration remains.
-- [ ] The chosen topology works locally in production mode, and `sslmode=verify-full` is enforced.
-- [ ] Production is still on Phase 1 until the release: nothing from `phase-2` merged to `main`, and the production database untouched.
-- [ ] Nothing from §14 was implemented.
+- [x] `phase-2` CI is green: lint, typecheck, tests and build for both projects. *(Every push to PR #2; 208 server tests at M5.)*
+- [x] A fresh clone and clean Docker volume build `relay_dev` and `relay_test` from `0001`–`0003`; `0003` rolls back and re-applies cleanly. *(M6, following the README; §17.)*
+- [x] No token is readable by JavaScript: none in `localStorage` or response bodies, and the cookie is `HttpOnly` (`Secure` and `__Host-` in production mode). *(M1, M5; again from the fresh clone with Render's build.)*
+- [x] Logout disconnects that session's sockets; the sweep disconnects expired and revoked sessions. *(M2; the other tab now goes to `/login`.)*
+- [x] Cross-origin state-changing requests and socket handshakes are rejected; bodies must be JSON. *(M3; M5 made the socket WebSocket-only.)*
+- [x] Password rules, the login timing fix and the login and signup rate limits are tested. *(M4.)*
+- [x] No session token appears in logs; `Set-Cookie` and `Cookie` are redacted. *(M1: `logger.test.ts` and the dev server's log.)*
+- [x] No JWT code, dependency or configuration remains. *(Searched in M6: only a comment about the old `localStorage` keys; `JWT_SECRET` leaves Render at §15 step 7.)*
+- [x] The chosen topology works locally in production mode, and `sslmode=verify-full` is enforced. *(M5; Render's build and start commands again from the fresh clone.)*
+- [x] Production is still on Phase 1 until the release: nothing from `phase-2` merged to `main`, and the production database untouched. *(`main` is `27fbe33`; PR #2 is a draft; the production database was never connected to.)*
+- [x] Nothing from §14 was implemented.
 
 ---
 
@@ -301,7 +297,7 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 | Protocol-version handshake | Phase 5 |
 | Email verification, password reset, password change | Not planned yet |
 | Shared rate-limit store, multiple instances | Not planned (D16) |
-| Custom domain, if option A is chosen | Later (D4) |
+| Custom domain | Later (D4) |
 
 ---
 
@@ -309,33 +305,78 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 
 When the maintainer decides to release Phase 2. Accounts and messages are kept; every user is logged out once, because their JWTs stop working.
 
-**Before starting:** CI is green on the draft PR, and any commit on `main` that `phase-2` lacks has been merged into `phase-2`. Note the current Render settings for the rollback.
+**Before starting:** CI is green on the draft PR, and any commit on `main` that `phase-2` lacks has been merged into `phase-2`. Note the current Render settings for the rollback. Check that Render runs Node 22 or later (the build log shows the version; CI and development use 24): `cookie` 2.x needs it.
 
 1. **Migrate production** from an up-to-date checkout of `phase-2`: `cd server && DATABASE_URL='<direct Neon URL, sslmode=verify-full>' npm run migrate`. Only `0003_sessions` is applied. It only adds a table, so the running Phase 1 server is unaffected. This step and every other production step are the maintainer's.
-2. **Render environment:** in `DATABASE_URL`, change `sslmode=require` to `sslmode=verify-full`; set `TRUST_PROXY=1`; confirm `NODE_ENV=production` (set it if missing, because the cookie depends on it); set `CLIENT_URL` to the app's public URL (option A: the Render URL; option B: `https://app.<domain>`). Save without deploying if Render offers that.
-3. **Topology:**
-   - Option A: set Render's root directory to the repository root, with build `npm ci --prefix client && npm run build --prefix client && npm ci --include=dev --prefix server && npm run build --prefix server` and start `npm start --prefix server`.
-   - Option B: set `VITE_API_URL=https://api.<domain>` in Vercel and confirm both domains serve over HTTPS.
-4. **Merge:** mark the PR ready and merge it with a merge commit: `gh pr ready <n> && gh pr merge <n> --merge`. Render (and, for option B, Vercel) deploys `main`.
+2. **Render environment:** in `DATABASE_URL`, change `sslmode=require` to `sslmode=verify-full`; set `TRUST_PROXY=1`; confirm `NODE_ENV=production` (set it if missing, because the cookie depends on it); set `CLIENT_URL` to the app's public URL, `https://chat-app-7wix.onrender.com`. Save without deploying if Render offers that.
+3. **Topology:** set Render's root directory to the repository root (empty), with build `npm ci --prefix client && npm run build --prefix client && npm ci --include=dev --prefix server && npm run build --prefix server` and start `npm start --prefix server`.
+4. **Merge:** mark the PR ready and merge it with a merge commit: `gh pr ready 2 && gh pr merge 2 --merge`. Render deploys `main`, and Vercel deploys the redirect in `client/vercel.json` (every path, temporary 307, to the same path on Render). Vercel is usually live first, so for a few minutes the old URL can land on the old server; wait for Render's deploy before the smoke test.
 5. **Smoke test** on the live site:
-   - Sign up, reload (still logged in), log out in one tab: the chat in the same browser's other tab disconnects. Log in again.
+   - Sign up, reload (still logged in), open `/chat` directly, log out in one tab: the same browser's other tab goes to `/login`. Log in again.
+   - `https://relay-chat-app.vercel.app/chat` redirects to `https://chat-app-7wix.onrender.com/chat`.
    - In devtools the cookie is `__Host-relay_session` with `HttpOnly`, `Secure` and `SameSite=Lax`, and `document.cookie` does not show it.
    - The 11th wrong password in a row for one email gets 429.
 6. **Check `trust proxy`:** Render's request logs show `ip` equal to your public IP, and a request sent with `X-Forwarded-For: 1.2.3.4` still logs your IP. If not, adjust `TRUST_PROXY` and repeat.
-7. **Clean up:** delete `JWT_SECRET` from Render (nothing reads it any more). For option A, turn the Vercel project into the redirect or remove it.
+7. **Clean up:** delete `JWT_SECRET` from Render and `VITE_API_URL` from the Vercel project (nothing reads them any more). Once the release has settled, the Vercel redirect can become permanent (`"permanent": true`).
 8. **Record** the release in this plan and update the status lines (README, `docs/v2-design.md`, CLAUDE.md).
 
-**Rollback:** revert the merge on `main` (`git revert -m 1 <merge commit>`, then push), and restore the Render settings noted before step 1 (and, for option A, the Vercel project). The `sessions` table can stay, because Phase 1 ignores it. Users log in again under Phase 1.
+**Rollback:** revert the merge on `main` (`git revert -m 1 <merge commit>`, then push), and restore the Render settings noted before step 1. The revert also restores the old `client/vercel.json`, so Vercel serves the Phase 1 client again; the redirect was temporary, so browsers do not keep following it. The `sessions` table can stay, because Phase 1 ignores it. Users log in again under Phase 1.
 
 ---
 
-## 16. Questions to settle at approval
+## 16. Decisions confirmed at approval
 
-| # | Question | Options | Recommendation |
-|---|---|---|---|
-| 1 | **Production cookie topology** (D4 open item, design §6) | **A.** Serve the SPA from Express: one origin in production and, with the Vite proxy, in development; no CORS. The client leaves Vercel; on a sleeping free-tier instance the first page load also waits; Render builds both projects. **B.** Custom domain with `app.` and `api.` subdomains: configuration only, and the client stays on Vercel, but it needs a domain (a yearly fee) and DNS on both providers. **Rejected:** `SameSite=None` (Safari blocks third-party cookies), and proxying the API through Vercel rewrites (believed not to carry WebSockets, design §8). | **A**, unless you want to buy a domain now: it costs nothing, can be built and verified entirely in the repository, and removes cross-origin configuration altogether. If you are willing to buy a domain, B needs the least code. |
-| 2 | **Workflow** | A long-lived `phase-2` branch with a draft PR, released by §15 (as in Phase 1); or commits straight to `main`, which would break production login until the topology is live. | The `phase-2` branch. |
-| 3 | **Vercel previews of `phase-2`** | Leave them on (every push builds a preview that cannot log in: a Phase 2 client against the Phase 1 API), or turn them off with `git.deploymentEnabled` in `client/vercel.json`. | Off. |
-| 4 | **Password rules for existing accounts** | Apply the new rules at signup only, or also force existing users with shorter passwords to reset. There is no reset flow yet. | Signup only; existing accounts keep working. |
-| 5 | **Defaults** | Sessions: 30-day absolute limit, 7-day idle timeout, `last_seen_at` hourly, sweep every 5 minutes. Rate limits: 10 failed logins per 15 minutes per IP and email, 5 signups per hour per IP. | As listed (design §6 and §9). |
-| 6 | **Logout scope** | This session only, or every session of the user. | This session only (design §6); "log out everywhere" belongs to the later session UI. |
+Confirmed by the maintainer on 2026-09-28. Relay is a portfolio project, not a commercial product, and it runs on free tiers; the recommendations were weighed with that in mind.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | **Production cookie topology** (D4 open item, design §6): **A.** serve the SPA from Express, one origin and no CORS; **B.** a custom domain with `app.` and `api.` subdomains, configuration only but a yearly fee. Rejected: `SameSite=None` (Safari blocks third-party cookies) and proxying the API through Vercel rewrites (believed not to carry WebSockets, design §8). | **A. Serve the SPA from Express**, because it costs nothing. The trade-off is accepted: on Render's sleeping free tier the first page load waits for the cold start, where Vercel would have shown the landing page at once. A custom domain stays under Later (D4). |
+| 2 | **Workflow:** a long-lived branch, or commits straight to `main` (which would break production login until the topology is live) | **The long-lived `phase-2` branch** with draft PR #2, released by §15, as in Phase 1. |
+| 3 | **Vercel previews of `phase-2`:** on (each preview is a Phase 2 client against the Phase 1 API, which cannot log in) or off | **Off**, through `git.deploymentEnabled` in `client/vercel.json` (M0). |
+| 4 | **Password rules for existing accounts:** at signup only, or also force existing users with shorter passwords to reset (there is no reset flow) | **Signup only.** Existing accounts keep working. |
+| 5 | **Defaults:** sessions with a 30-day absolute limit, a 7-day idle timeout, `last_seen_at` hourly and a sweep every 5 minutes; 10 failed logins per 15 minutes per IP and email; 5 signups per hour per IP | **As drafted, except 20 signups per hour per IP.** Everyone on one network (a class, a career fair) shares one public IP, so a demo to a group would hit 5 quickly. The login limit is per email as well, so it is unaffected. |
+| 6 | **Logout scope:** this session only, or every session of the user | **This session only** (design §6). "Log out everywhere" belongs to the later session UI (D11). |
+| 7 | **Socket transport** (found in M3, decided before M5): browsers send no `Origin` on a same-origin polling `GET`, which the handshake check refuses | **WebSocket only**, on the server and the client, so every handshake carries `Origin` and the strict check stays. Polling is not needed on one Render instance. |
+
+---
+
+## 17. Completion record
+
+Phase 2 was completed on 2026-09-28 on the `phase-2` branch, with draft PR #2 (`phase-2 → main`, not merged) running CI on every push; every push was green, and Vercel built nothing from the branch. Each milestone started after the maintainer approved the previous one. From the M2 follow-up on, the maintainer reviewed the changes and made the commits; M3–M5 each put their plan steps in one feature commit, with a separate docs commit. Server tests grew from 124 to 208.
+
+| Milestone | Commits | Notes |
+|---|---|---|
+| M0 — Branch and baseline | `f3d603f`, `93e2d87` | `client/vercel.json` turns off Vercel deployments of `phase-2`, which also gave GitHub the change it needs to open the PR (no empty commit). The approval and decisions are recorded in §16. |
+| M1 — Sessions replace JWT | `ab39a62`, `f4e094a`, `b12c09e`, `bf1a14e` | `cookie` 2.x instead of the planned 0.7.2, which has no TypeScript types (§2). `Set-Cookie` was redacted from the logs before any cookie existed; its test failed without the redaction. |
+| M2 — Session lifecycle on sockets | `4b67d76`, `6738cfc`, `5e1ff63`, `317c694` | Follow-up approved by the maintainer (`317c694`): a tab whose socket the server cut off asks `/api/auth/me`, so it goes to `/login` instead of sitting on a dead socket. |
+| M3 — CSRF, Origin checks and helmet | `67312c3`, `5987750` | Found: browsers send no `Origin` on a same-origin `GET`, so the polling handshake would fail the handshake check once client and API share an origin. Resolved in M5 (§16, decision 7). |
+| M4 — Passwords and rate limits | `ac7227f`, `ed0f00d` | The §10 test line "a correct password still gets through" is read as: successful logins do not count toward the limit. Once an IP and email are limited, even the correct password gets 429; otherwise the limit would not stop guessing. |
+| M5 — Production topology and database TLS | `41631c8`, `0913d54` | WebSocket only on server and client. `VITE_API_URL` is no longer read: without CORS, an API on another origin cannot work, and a leftover value in `client/.env.local` would have broken development. |
+| M6 — Verification and handoff | this milestone's commits | ADRs 0004 and 0005; README, `docs/v2-design.md` and this plan; the Vercel redirect (`client/vercel.json`, every path to the same path on Render, 307), resolved with Vercel's routing library (`/:path*` would have missed `/`, so the rule is `/(.*)`). |
+
+**Fresh-clone verification (M6).** A fresh clone of `phase-2` (`0913d54`) with M6's changes applied, and a clean Docker volume under a separate Compose project, so the maintainer's `relay_dev` was kept. Following the README: `npm install` in both projects; `docker compose up`; `.env` copied from `.env.example` unchanged; `npm run migrate` built `relay_dev` from `0001`–`0003`; `0003` rolled back and re-applied; `npm test` migrated `relay_test` and passed 208 of 208; lint, typecheck and build passed in both projects. The app, run with both `npm run dev`s through the Vite proxy, passed the §15 smoke tests in headless Chrome: two users chatting live, a sign-out in one tab sending the other tab to `/login` while another user kept chatting, the 10th wrong password answered as usual and the 11th with "Too many attempts", and the signup form asking for 8 characters. Render's build and start commands (§15, step 3), run from the clone's root, built both projects and served the client in production mode: `/` and `/chat` as `index.html` with `no-cache`, a missing asset as 404, `/api` JSON 404s, and signup setting `__Host-relay_session` with `HttpOnly`, `Secure` and `SameSite=Lax`.
+
+**Production:** untouched. `main` is `27fbe33`; nothing from `phase-2` is merged; the production database was never connected to. The release (§15) is the maintainer's decision.
+
+**Known issues and notes**
+- `npm audit` reports 6 vulnerabilities (4 high) in `ws`, through Socket.io. They are on `main` as well, and the maintainer chose not to address them in Phase 2.
+- On Render's free tier, a sleeping instance makes the whole page wait for the cold start (ADR 0005).
+- No HTTP long-polling fallback: a network that blocks WebSockets cannot connect.
+- An expired or deleted session keeps its sockets for up to 5 minutes (the sweep interval); logout cuts them off at once.
+- Only `DATABASE_URL` is checked for `sslmode=verify-full`. The legacy `DB_*` variables connect without TLS, which is only suitable for a local database.
+- The Vercel project still builds the client, although it only serves the redirect.
+- In development React's StrictMode connects the socket twice (the first one closes); production connects once.
+
+---
+
+## 18. Handoff to Phase 3
+
+**Starting point:** `phase-2`, and after the release `main`: the single-room app on `#general` with server-side sessions (ADR 0004), logout and the sweep cutting off sockets, CSRF checks, rate limits and password rules, helmet, and the client served by Express from one origin with WebSocket-only sockets (ADR 0005). CLAUDE.md describes all of it, including the test helpers (`api()`, `startServer(options)`, `connectSocket(url, cookie, { origin })`, `setSessionAgo`).
+
+**Before Phase 3:**
+1. Run the release (§15), so the next phase starts from what production runs.
+2. Revisit the scope of Phases 3–8 (`docs/v2-design.md` §9). Relay is a portfolio project on free tiers (§16): choose which features are worth building (conversations and DMs are the visible ones) and what the first visit needs (the cold start; demo data, D15), before planning.
+
+**First step of Phase 3:** write `docs/phase-3-implementation-plan.md` in the same format as this plan, and get it approved before any Phase 3 code.
+
+**Carried over, unchanged (§14):** the `express.json` body limit and Socket.io's `maxHttpBufferSize`, zod schemas for socket payloads, and message rate limits (Phase 4); the protocol-version handshake (Phase 5); the Content Security Policy (Phase 8); the session management UI (later, D11).

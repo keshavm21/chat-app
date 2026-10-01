@@ -1,16 +1,8 @@
 import axios from 'axios';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5001',
-});
-
-// Automatically attach the JWT to every request.
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('relay_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// Requests go to the page's own origin: Express serves the client in production, and
+// Vite proxies /api to the server in development (vite.config.js). Same-origin requests
+// carry the httpOnly session cookie by themselves.
+const api = axios.create();
 
 export default api;
