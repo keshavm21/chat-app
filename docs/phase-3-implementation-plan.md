@@ -134,7 +134,7 @@ The existing production data is not kept (maintainer, 2026-09-30), so the releas
 5. **`TRUST_PROXY=1` was wrong for Render.** After the reconnect fix was deployed, the smoke test's 11th wrong password still got 401. Render's log lines showed why: a request passes through Cloudflare, Render's load balancer and a proxy on the instance (the socket comes from `::1`), and `X-Forwarded-For` reads `<client>, <Cloudflare>, <balancer>`, with both of the last two varying. With 1, `req.ip` was the balancer's `10.x` address, so failed logins spread over several counters, and unrelated clients behind one balancer shared one. `TRUST_PROXY=3` takes the IP Cloudflare saw, and a spoofed entry before it is ignored; `test/rateLimits.test.ts` replays the chain. The README, `.env.example` and CLAUDE.md say 3 now.
 6. **After the reconnect fix** (deployed with `763c06c`), the rest of the smoke test passed on the live site: no socket reconnects over 8 changes of conversation, typing right after a switch arrives, a logout in one tab sends the other to `/login`, and the old Vercel URL answers 307 to the same path on Render.
 7. **`TRUST_PROXY=3` set on Render and deployed:** ten wrong passwords for one email got 401 and the 11th got 429, even with a spoofed `X-Forwarded-For` on it, so the login limit counts each real client.
-8. Left to finish: delete `JWT_SECRET` from Render and `VITE_API_URL` from Vercel (nothing reads them any more).
+8. **Cleaned up:** the maintainer deleted `JWT_SECRET` from Render and `VITE_API_URL` from Vercel (nothing read them any more). **The release is complete.**
 
 ---
 
@@ -217,5 +217,5 @@ Phase 3 was completed on 2026-10-01 on the `phase-3` branch, with draft PR #3 (`
 - A NUL character in a message or a login email reaches Postgres and fails as "Failed to save message." or a 500 (both from before Phase 3).
 - Socket payloads are checked by hand, not with zod; messages have no rate limit.
 
-**Next:** the open items of the release record (§8).
+**Next:** none planned; the release record (§8) is complete.
 
