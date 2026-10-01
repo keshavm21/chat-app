@@ -1,7 +1,7 @@
 # Relay — Phase 3 Implementation Plan: channels, DMs and launch
 
-**Status:** ✅ **Approved** (2026-09-30), with the maintainer's decisions in [§9](#9-decisions-confirmed-at-approval). **Complete on the `phase-3` branch** (2026-10-01): M0–M2 done and approved, M3 implemented and awaiting approval — see [§10 Progress record](#10-progress-record) and [§11 Completion record](#11-completion-record). **The release (§8) is the maintainer's to run.**
-**Scope source:** `docs/v2-design.md` §9 (Phases 3, 4 and 8), cut down to the visible features, as the maintainer decided on 2026-09-30: Relay is a portfolio project, and it should be finished quickly. The handoff is `docs/phase-2-implementation-plan.md` §18.
+**Status:** ✅ **Approved** (2026-09-30), with the maintainer's decisions in [§9](#9-decisions-confirmed-at-approval). **Complete and released** (2026-10-01): M0–M3 done and approved, released with Phase 2 from a fresh database — see [§8](#8-release-phases-2-and-3-together) for the release record, [§10 Progress record](#10-progress-record) and [§11 Completion record](#11-completion-record).
+**Scope source:** `docs/v2-design.md` §9 (Phases 3, 4 and 8), cut down to the visible features, as the maintainer decided on 2026-09-30: the visible features come first, and the work should be finished quickly. The handoff is `docs/phase-2-implementation-plan.md` §18.
 **Rule:** if a step seems to need something not listed here, stop and ask. Do not expand the scope.
 
 ---
@@ -126,6 +126,14 @@ The existing production data is not kept (maintainer, 2026-09-30), so the releas
 
 **Rollback:** revert the merge and restore the Render settings; with a fresh database, re-run the migrations.
 
+**Release record (2026-10-01).**
+1. The maintainer emptied the production database, ran `npm run migrate` (`0001`–`0004`) and `npm run seed:demo` against it with `sslmode=verify-full`, and saved Render's new settings (root directory empty, the two-project build and start commands, `CLIENT_URL`, `NODE_ENV=production`, `TRUST_PROXY=1`) without deploying.
+2. PR #3 was merged into `main` (`c65bd2e`); PR #2 shows as merged too, since its commits came with #3.
+3. **The first deploy failed:** `vite: not found`. Render runs the build with the service's `NODE_ENV=production`, so `npm ci` skipped the client's dev dependencies (the server's install already had `--include=dev`). The fresh-clone check had run Render's command without that variable. Fixed by adding `--include=dev` to the client's `npm ci` in Render's build command (and in the README and the Phase 2 plan's §15); the next deploy went live. The old Phase 1 deploy kept serving meanwhile.
+4. **Smoke test on the live site** (headless Chrome, two throwaway accounts so the demo account and public channels stay clean): the landing page's "Try the demo" signs in to the seeded demo account; the session cookie is `__Host-relay_session` with `HttpOnly`, `Secure` and `SameSite=Lax`, and `document.cookie` does not show it; signup, and a reload staying logged in; a new DM appears live in the other user's sidebar. It also found a bug: **the client reconnected its socket at every change of conversation** (`useNavigate()` returns a new function after each navigation under `BrowserRouter`, and the socket effect depended on it), so a keystroke right after switching could miss its typing event on production's latency. Fixed by reading `navigate` through a ref; checked in headless Chrome: 7 switches opened 7 new sockets before the fix and none after.
+5. `TRUST_PROXY`: a request with `X-Forwarded-For: 1.2.3.4` was sent at 07:21:42 UTC; Render's log should show the sender's real IP for it.
+6. Left to finish: confirm step 5 in Render's logs; deploy the reconnect fix and rerun the smoke test's remaining checks (typing in a DM right after switching, a logout in one tab sending the other to `/login`, the 11th wrong password answered with 429, the old Vercel URL redirecting); delete `JWT_SECRET` from Render and `VITE_API_URL` from Vercel.
+
 ---
 
 ## 9. Decisions confirmed at approval
@@ -148,7 +156,7 @@ Confirmed by the maintainer on 2026-09-30.
 | M0 — Branch | Done 2026-09-30 | `phase-3` from `phase-2` (`06bdb9c`); draft PR #3 `phase-3 → main`; CI green; `client/vercel.json` turns off Vercel deployments of the branch (GitHub shows none). |
 | M1 — Conversations on the server | Done 2026-10-01 (approved with the decisions below) | The REST API and rooms of §5; `GET /api/messages` and the global broadcast removed; the maintainer's four follow-up decisions (below); server tests 208 → 325, and 7 client unit tests. Details below. |
 | M2 — Conversations in the client | Done 2026-10-01 (approved) | The §6 client, checked in headless Chrome as §6 asks; 28 client unit tests. Details below. |
-| M3 — Launch | Implemented 2026-10-01, awaiting approval | Demo data and the demo login, landing page and README, ADR 0006, docs, the fresh-clone check. Details below and in §11. |
+| M3 — Launch | Done 2026-10-01 (approved) | Demo data and the demo login, landing page and README, ADR 0006, docs, the fresh-clone check. Details below and in §11. |
 
 **Maintainer's decisions on M1** (2026-10-01):
 1. **Private channel names cannot be found through a 409.** Migration `0004` makes names unique among public channels only; private channels may share a name with each other or with a public channel. `#general` is therefore looked up by name and `visibility = 'public'`.
@@ -197,7 +205,7 @@ Phase 3 was completed on 2026-10-01 on the `phase-3` branch, with draft PR #3 (`
 
 **Fresh-clone verification (M3).** A fresh clone of `phase-3` (`d3f00d8`) with M3's changes applied, and a clean Docker volume under a separate Compose project (`relay-fresh`), so the maintainer's `relay_dev` was kept. Following the README: `npm install` in both projects; `docker compose up`; `.env` copied from `.env.example` unchanged; `npm run migrate` built the database from `0001`–`0004`; `0004` rolled back and re-applied; `npm run seed:demo` created 5 users, 4 conversations and 14 messages, and a second run created nothing; `npm test` migrated `relay_test` and passed 329 of 329 (330 with the typing fix found below); the client's 28 tests, and lint, typecheck and build in both projects, passed. The app, run with both `npm run dev`s through the Vite proxy, passed a smoke test in headless Chrome: the landing page's "Try the demo" signs in as the demo account, which finds the seeded channels, the private channel and the DM with unread badges; the login page's button fills the form; a new user and the demo account chat live in `#general`, typing included; opening a channel clears its badge. Render's build and start commands (§8, step 2; the Phase 2 plan's §15, step 3), run from the clone's root with `NODE_ENV=production`, built both projects and served the client: `/`, `/chat`, `/c/1` and `/login?demo` as `index.html` with `no-cache`, a missing asset as 404, `/api` JSON 404s; the same smoke test passed against it, the session cookie was `__Host-relay_session` with `HttpOnly`, `Secure` and `SameSite=Lax`, and the README's screenshots were taken there. That run found the typing bug above; after the fix, the clone was rebuilt and every check passed again.
 
-**Production:** untouched. `main` is the Phase 1 app; nothing from `phase-2` or `phase-3` is merged; the production database was never connected to.
+**Production:** released 2026-10-01 (§8, release record): `main` is Phases 0–3, and the production database was created fresh by the maintainer.
 
 **Known issues and notes**
 - Everything in the Phase 2 plan's §17 still applies (`ws` advisories through Socket.io, the free tier's cold start, no long-polling fallback, the 5-minute sweep for sessions that end without a logout).
@@ -207,5 +215,5 @@ Phase 3 was completed on 2026-10-01 on the `phase-3` branch, with draft PR #3 (`
 - A NUL character in a message or a login email reaches Postgres and fails as "Failed to save message." or a 500 (both from before Phase 3).
 - Socket payloads are checked by hand, not with zod; messages have no rate limit.
 
-**Next:** the release (§8), run by the maintainer: a fresh production database, `npm run migrate` and `npm run seed:demo` against it, Render's settings, then merging PR #3 (which closes PR #2).
+**Next:** the open items of the release record (§8).
 

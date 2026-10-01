@@ -10,7 +10,7 @@ Until Phase 2 the client ran on Vercel (`relay-chat-app.vercel.app`) and the API
 - A `SameSite=Lax` cookie is not sent with cross-site `fetch`, XHR or WebSocket requests, so the app could not stay logged in.
 - `SameSite=None` would make it a third-party cookie, which Safari blocks outright.
 
-Client and API therefore had to become the same site before Phase 2 could reach production. Relay is a portfolio project on free tiers, with no budget for a domain.
+Client and API therefore had to become the same site before Phase 2 could reach production. Relay runs on free tiers, with no budget for a domain.
 
 ## Decision
 

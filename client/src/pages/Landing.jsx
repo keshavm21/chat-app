@@ -66,9 +66,9 @@ export default function Landing() {
       </ul>
 
       <p className="fade-in-up-2 mt-10 text-slate-600 text-sm">
-        Relay · a portfolio project ·{' '}
+        Relay ·{' '}
         <a href="https://github.com/keshavm21/chat-app" className="hover:text-slate-400 underline-offset-2 hover:underline">
-          source on GitHub
+          source code on GitHub
         </a>
       </p>
     </div>

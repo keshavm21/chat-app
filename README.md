@@ -48,8 +48,8 @@ Relay started as a single-room chat and was evolved into **Relay V2** in phases.
 |---|---|
 | **0 — Foundation:** migrations, TypeScript tooling, integration tests, CI, config validation, error envelope, structured logging, graceful shutdown | ✅ Complete |
 | **1 — V2 data model** on a fresh database: channels, DMs and memberships in the schema, gapless per-conversation message order, signup validation | ✅ Complete, in production since 2026-09-27 |
-| **2 — Sessions and security baseline:** server-side sessions in an httpOnly cookie, logout that disconnects live sockets, CSRF defenses, rate limits, password rules, helmet, one origin for app and API, verified database TLS | ✅ Complete; released together with Phase 3 |
-| **3 — Channels, DMs and launch:** public and private channels, DMs, messaging, typing and unread counts per conversation, the client's sidebar and dialogs, a demo account | ✅ Complete on the `phase-3` branch; release pending |
+| **2 — Sessions and security baseline:** server-side sessions in an httpOnly cookie, logout that disconnects live sockets, CSRF defenses, rate limits, password rules, helmet, one origin for app and API, verified database TLS | ✅ Complete, in production since 2026-10-01 (with Phase 3) |
+| **3 — Channels, DMs and launch:** public and private channels, DMs, messaging, typing and unread counts per conversation, the client's sidebar and dialogs, a demo account | ✅ Complete, in production since 2026-10-01 |
 | 4–8 — REST sends with retries, a change feed, presence, editing, hardening | Not scheduled: the visible parts were built in Phase 3 ([ADR 0006](./docs/adr/0006-reduced-scope-and-socket-send.md)) |
 
 - [Current-state audit](./docs/current-state-audit.md) — the analysis the V2 work starts from
@@ -203,7 +203,7 @@ The server's `npm test` runs against `relay_test` and applies the migrations its
 
 Render runs one web service: Express serves the API, the WebSocket and the built React app from one origin, so the session cookie is first-party (see [ADR 0005](./docs/adr/0005-production-cookie-topology.md)). Neon hosts PostgreSQL.
 
-> Production runs Phase 1 until Phases 2 and 3 are released together, from a fresh database, by the [Phase 3 plan, §8](./docs/phase-3-implementation-plan.md#8-release-phases-2-and-3-together); the steps below describe a deployment from scratch.
+> The steps below describe a deployment from scratch. Phases 2 and 3 reached production together, from a fresh database, by the [Phase 3 plan, §8](./docs/phase-3-implementation-plan.md#8-release-phases-2-and-3-together).
 
 ### Neon — PostgreSQL database
 

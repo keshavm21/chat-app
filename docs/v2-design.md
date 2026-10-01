@@ -73,7 +73,7 @@ This is an evolution of the existing app, not a rewrite:
 
 **Legend:** **Core** = in V2. **Later** = planned after the V2 core (D11). **Deferred** = postponed by D12. **Optional** = not planned; candidates after V2. **Exclude** = out of scope.
 
-| Feature | User value | Engineering value | Complexity | Architectural impact | Interview value | Include? |
+| Feature | User value | Engineering value | Complexity | Architectural impact | Technical depth | Include? |
 |---|---|---|---|---|---|---|
 | Profiles (display name, immutable username) | Recognizable identity | Removes username denormalization; case-insensitive uniqueness | Low | `users` columns, PATCH endpoint | Low–Med: denormalization tradeoffs | **Core** (minimal) |
 | Profile pictures | Visual recognition | Uploads, object storage, validation | Med | New cloud service, upload pipeline | Med | **Deferred** (D12; initials shown instead) |
@@ -109,7 +109,7 @@ This is an evolution of the existing app, not a rewrite:
 
 **What Relay is:** real-time team chat for one community, with public channels, private channels and 1:1 DMs, built around reliable delivery and strict access control.
 
-**Who uses it:** a small team, club or study group, from tens to low hundreds of users, on one shared instance. There are no workspaces or tenants. A secondary audience is the people evaluating the portfolio: signup is open with basic rate limiting, and seeded demo data is optional (D15).
+**Who uses it:** a small team, club or study group, from tens to low hundreds of users, on one shared instance. There are no workspaces or tenants. Visitors who just want to try it are welcome too: signup is open with basic rate limiting, and seeded demo data is optional (D15).
 
 **Assumption:** scale is at most a few hundred concurrent sockets and a few messages per second, on a single server instance (D16).
 
@@ -567,7 +567,7 @@ Coverage goals are about behavior (every policy rule and every sync path), not a
 - `/health/live` (process is up) and `/health/ready` (database answers `SELECT 1`).
 - pino with a request ID per request, plus socket lifecycle logs.
 - An ESLint configuration for the server.
-- Short ADRs in `docs/adr/` for the significant decisions, including which D5 level was implemented and whether D9 needed a library. They are cheap to write and directly useful for interviews.
+- Short ADRs in `docs/adr/` for the significant decisions, including which D5 level was implemented and whether D9 needed a library. They are cheap to write, and they explain the system's choices to anyone reading the code.
 
 ---
 
@@ -599,7 +599,7 @@ Coverage goals are about behavior (every policy rule and every sync path), not a
 
 **Hosting plan (deferred, D13).** Facts to use when it is decided:
 
-- On the free Render tier, the instance sleeps when idle. That drops every socket, and the first visitor waits through a cold start, which is a poor first impression for a recruiter.
+- On the free Render tier, the instance sleeps when idle. That drops every socket, and the first visitor waits through a cold start, which is a poor first impression for a new visitor.
 - An always-on paid instance avoids this; check current pricing at that time.
 - Neon's free tier is likely sufficient.
 
@@ -652,7 +652,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** migrations apply to an empty database; constraint tests (username and email format, content length, the DM pair rule, the channel/DM shape check); the Phase 0 tests updated to the new schema.
 - **Done when:** local and CI databases are built by the new migrations, the single-room app works on the V2 schema, and every constraint is covered by a test. If the minimal D5 level is chosen later, `seq` is dropped in a later migration.
 
-### Phase 2 — Sessions and security baseline — ✅ complete (release pending)
+### Phase 2 — Sessions and security baseline — ✅ complete, in production since 2026-10-01
 
 - **Status:** completed 2026-09-28 on the long-lived `phase-2` branch (draft PR #2), as planned in `docs/phase-2-implementation-plan.md` (decisions in its §16, completion record in its §17). It reaches production through that plan's release runbook (§15). Decisions are recorded in ADR 0004 (server-side sessions and the three CSRF layers) and ADR 0005 (the SPA served by Express, WebSocket only). Signups are limited to 20 per hour per IP instead of 5, so a demo to a group on one network is not blocked.
 
@@ -666,7 +666,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 - **Tests:** auth API and CSRF tests; socket rejects missing or revoked sessions; logout disconnects the session's sockets.
 - **Done when:** no token is readable by JavaScript and logout cuts off live sockets.
 
-### Phase 3 — Conversations and authorization (vertical slice) — ✅ complete (release pending), reduced scope
+### Phase 3 — Conversations and authorization (vertical slice) — ✅ complete, in production since 2026-10-01, reduced scope
 
 - **Status:** completed 2026-10-01 on the `phase-3` branch (draft PR #3, which carries Phase 2 too), as planned in `docs/phase-3-implementation-plan.md` (decisions in its §3 and §9, progress and completion record in its §10–§11). The maintainer cut Phases 3–8 down to the visible features (ADR 0006): public channels, minimal private channels, DMs, messaging, typing and unread counts per conversation, a demo account with seeded channels, and one release of Phases 2 and 3 from a fresh database. Messages are still sent over the socket (not D2's REST writes), and sync is at the simplified level of §5. Of Phase 4, the per-conversation send, keyset pagination, the client's decomposition with "load older", and the removal of the single-room API were built here; of Phase 6, unread counts and the per-conversation typing relay. There is no service or policy layer: routes call repositories, and the only rule is membership (404 to non-members).
 
@@ -720,7 +720,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
 
 ### Phase 8 — Hardening and launch — not scheduled (see Phase 3 and ADR 0006)
 
-- **Goal:** production-ready and portfolio-ready.
+- **Goal:** production-ready, and ready for visitors to try.
 - **Changes:**
   - Remaining rate limits and the CSP.
   - Strict TypeScript everywhere.
@@ -730,7 +730,7 @@ Each phase leaves the app working and CI green. Phases 0 and 1 can go to product
   - Optionally, seeded demo data (D15) and a small socket load script so any scaling claims are measured rather than guessed.
 - **Dependencies:** all prior phases.
 - **Tests:** the full E2E suite; the security checklist.
-- **Done when:** a stranger can open the deployed app and use it, and every resume claim is backed by code or a test.
+- **Done when:** a stranger can open the deployed app and use it, and every claim in the README is backed by code or a test.
 
 ### Later (not scheduled)
 
@@ -797,20 +797,20 @@ All decisions were approved on 2026-09-27.
 - **Problem:** audit §11 shows REST and sockets already drift apart. Each extra write path duplicates validation, authorization and rate limiting.
 - **Alternatives:** socket emits with acknowledgements (the current pattern, one connection, slightly lower latency), or REST for all writes with sockets for push and ephemeral signals only.
 - **Tradeoffs:** REST adds per-request HTTP overhead, which is negligible with keep-alive at chat volumes. In return it gives standard status codes, idempotency, supertest-testable writes, middleware-based rate limiting, and a socket that almost only receives. That makes socket security much smaller: only typing is accepted from clients.
-- **Interview defense:** "Persistence and authorization happen in one place. The socket is a notification channel, and correctness never depends on it. This is the same split several production chat systems use: writes through an HTTP API, delivery over a WebSocket."
+- **In short:** "Persistence and authorization happen in one place. The socket is a notification channel, and correctness never depends on it. This is the same split several production chat systems use: writes through an HTTP API, delivery over a WebSocket."
 
 #### D3: Server-side sessions vs JWT
 
 - **Problem:** the current token cannot be revoked, is readable by any script on the page, and logging out does not disconnect sockets.
 - **Why sessions fit Relay:** there is one service and it already queries the database, so JWT's stateless benefit is not used, while revocation is required.
-- **Interview defense:** be able to answer "wouldn't JWT scale better?" Stateless verification helps when many services must verify tokens without a shared store. At Relay's scale, a primary-key lookup is microseconds. If it ever mattered, a cache in front of the sessions table would be the first step, not rotating refresh tokens.
+- **The usual objection,** "wouldn't JWT scale better?": stateless verification helps when many services must verify tokens without a shared store. At Relay's scale, a primary-key lookup is microseconds. If it ever mattered, a cache in front of the sessions table would be the first step, not rotating refresh tokens.
 
 #### D5: Per-conversation sequence and revision (flexible)
 
 - **Problem:** with global ID ordering, transactions can commit out of ID order, so "fetch everything after ID X" can skip messages. Separately, edits and deletions have to reach clients that were offline.
 - **Choice:** counters on the conversation row, incremented under a row lock inside the send transaction, if practical. The simpler levels in §5 keep the same guarantees with less machinery.
 - **Tradeoff:** writes within one conversation are serialized: roughly hundreds of sends per second per conversation, far beyond Relay's needs.
-- **Interview defense:** walk through the commit-order problem, show how the row lock makes sequence numbers gapless, and explain why gaplessness makes client-side gap detection possible. If a simpler level was used, explain which guarantee each part of it provides and what the full model would add.
+- **In short:** transactions can commit out of ID order; the row lock makes sequence numbers gapless and in commit order; and gaplessness is what makes client-side gap detection possible. A simpler level keeps the guarantees each of its parts provides, and the full model adds the change feed for edits and deletes.
 
 ---
 
@@ -820,6 +820,6 @@ All decisions were approved on 2026-09-27.
 2. ~~Write and approve `docs/phase-1-implementation-plan.md` and implement Phase 1~~ — done 2026-09-27 on the `phase-1` branch (that plan's §15).
 3. ~~Run the Phase 1 production cutover~~ — done 2026-09-27 (the Phase 1 plan's §15).
 4. ~~Write and approve `docs/phase-2-implementation-plan.md`, choose the production cookie topology and implement Phase 2~~ — done 2026-09-28 on the `phase-2` branch (that plan's §17).
-5. ~~Release Phase 2~~ — postponed (2026-09-30), to be released together with Phase 3 (item 7).
+5. ~~Release Phase 2~~ — released together with Phase 3 (item 7).
 6. ~~Write and approve `docs/phase-3-implementation-plan.md` and implement Phase 3~~ — done 2026-10-01 on the `phase-3` branch, with Phases 4–8 cut to their visible parts (ADR 0006; that plan's §11).
-7. **Release Phases 2 and 3 together** when the maintainer decides, from a fresh database, following the Phase 3 plan's §8 (which replaces the Phase 2 plan's §15).
+7. ~~Release Phases 2 and 3 together~~ — done 2026-10-01, from a fresh database (the Phase 3 plan's §8).

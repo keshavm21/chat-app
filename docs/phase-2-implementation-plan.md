@@ -326,7 +326,7 @@ When the maintainer decides to release Phase 2. Accounts and messages are kept; 
 
 ## 16. Decisions confirmed at approval
 
-Confirmed by the maintainer on 2026-09-28. Relay is a portfolio project, not a commercial product, and it runs on free tiers; the recommendations were weighed with that in mind.
+Confirmed by the maintainer on 2026-09-28. Relay runs on free tiers with no budget; the recommendations were weighed with that in mind.
 
 | # | Question | Decision |
 |---|---|---|
@@ -375,7 +375,7 @@ Phase 2 was completed on 2026-09-28 on the `phase-2` branch, with draft PR #2 (`
 
 **Before Phase 3:**
 1. Run the release (§15), so the next phase starts from what production runs.
-2. Revisit the scope of Phases 3–8 (`docs/v2-design.md` §9). Relay is a portfolio project on free tiers (§16): choose which features are worth building (conversations and DMs are the visible ones) and what the first visit needs (the cold start; demo data, D15), before planning.
+2. Revisit the scope of Phases 3–8 (`docs/v2-design.md` §9). Relay runs on free tiers (§16): choose which features are worth building (conversations and DMs are the visible ones) and what the first visit needs (the cold start; demo data, D15), before planning.
 
 **First step of Phase 3:** write `docs/phase-3-implementation-plan.md` in the same format as this plan, and get it approved before any Phase 3 code.
 

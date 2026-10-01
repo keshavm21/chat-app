@@ -7,7 +7,7 @@
 
 The V2 design (`docs/v2-design.md` §9) planned eight phases after the foundation: conversations, messaging with REST writes and `clientId` retries, catch-up sync with a change feed, presence and cross-tab read sync, editing and deletion, and a hardening phase. Phases 0–2 had built the base: the V2 schema, server-side sessions and the security baseline.
 
-Relay is a portfolio project on free tiers. What a visitor (a recruiter) can see is a chat with channels and DMs that works live; most of the remaining phases add depth that only shows in failure cases (a retried send, an edit reaching an offline client) or in code review. Building all of them would take many times longer than building the visible part.
+Relay runs on free tiers and is built by one person. What a visitor sees is a chat with channels and DMs that works live; most of the remaining phases add depth that only shows in failure cases (a retried send, an edit reaching an offline client) or in code review. Building all of them would take many times longer than building the visible part.
 
 ## Decision
 
@@ -17,7 +17,7 @@ Relay is a portfolio project on free tiers. What a visitor (a recruiter) can see
 
 ## Alternatives considered
 
-- **The full roadmap (Phases 4–8).** The most complete system, and the best interview material on delivery guarantees, but months more of work for features a visitor would not notice.
+- **The full roadmap (Phases 4–8).** The most complete system, with the strongest delivery guarantees, but months more of work for features a visitor would not notice.
 - **REST sends with `clientId` (D2).** Standard status codes, idempotent retries, and a socket that only receives. It means a second write path to build and test, and pending/failed states in the UI; the existing socket send already gives server-assigned, gapless order per conversation, with tests.
 - **No seqs at all (the design's minimal level).** Simpler, but loses the gapless per-conversation order and the O(1) unread counts that Phase 1 already provides.
 
