@@ -225,10 +225,10 @@ Render runs one web service: Express serves the API, the WebSocket and the built
 3. Build command:
 
    ```bash
-   npm ci --prefix client && npm run build --prefix client && npm ci --include=dev --prefix server && npm run build --prefix server
+   npm ci --include=dev --prefix client && npm run build --prefix client && npm ci --include=dev --prefix server && npm run build --prefix server
    ```
 
-   Start command: `npm start --prefix server`. The server build needs the dev dependencies because it compiles with TypeScript.
+   Start command: `npm start --prefix server`. Both installs need `--include=dev`: Render runs the build with the service's `NODE_ENV=production`, which makes `npm ci` skip dev dependencies, and both builds use them (Vite for the client, TypeScript for the server).
 4. Add environment variables in the Render dashboard:
 
    | Variable | Value |
