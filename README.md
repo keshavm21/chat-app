@@ -236,11 +236,11 @@ Render runs one web service: Express serves the API, the WebSocket and the built
    | `DATABASE_URL` | the Neon connection string, with `sslmode=verify-full` |
    | `CLIENT_URL` | the service's own URL, e.g. `https://chat-app-7wix.onrender.com`: the only origin allowed to change state or open a socket |
    | `NODE_ENV` | `production`: the session cookie becomes `__Host-relay_session` with `Secure` |
-   | `TRUST_PROXY` | `1`: Render's proxy adds the client IP to `X-Forwarded-For`, which the rate limits and logs use |
+   | `TRUST_PROXY` | `3`: a request reaches the app through Cloudflare, Render's load balancer and a proxy on the instance, and each adds to `X-Forwarded-For`; with 3, the rate limits and logs use the IP Cloudflare saw |
    | `LOG_LEVEL` | optional; defaults to `info` |
 
    Render sets `PORT` itself. If a variable is missing or invalid, the server exits at startup and the log names it.
-5. After the first deploy, check `TRUST_PROXY`: the request log lines' `ip` should be your public IP, also when you send a request with `X-Forwarded-For: 1.2.3.4`.
+5. After the first deploy, check `TRUST_PROXY`: the request log lines' `ip` should be your public IP, also when you send a request with `X-Forwarded-For: 1.2.3.4`. If it shows a `10.x` address instead, a proxy hop was added or removed: count the entries after your IP in the line's `x-forwarded-for`, and set `TRUST_PROXY` to that number plus one.
 
 On every deploy Render sends the old instance `SIGTERM`. The server shuts down gracefully, and connected clients reconnect to the new instance automatically. On Render's free tier the instance sleeps when idle, so the first visit after a while waits for it to wake up.
 

@@ -161,4 +161,32 @@ describe('trust proxy', () => {
     expect((await signupFrom('198.51.100.9, 203.0.113.2')).status).toBe(400);
     expect((await signupFrom('198.51.100.10, 203.0.113.2')).status).toBe(429);
   });
+
+  // Render's chain, from its logs at the release (docs/phase-3-implementation-plan.md §8):
+  // Cloudflare appends the client's IP, Render's load balancer appends Cloudflare's, and a
+  // proxy on the instance appends the balancer's and connects from loopback. Both
+  // Cloudflare and the balancer vary from request to request.
+  it("with TRUST_PROXY=3, as on Render, takes the IP Cloudflare saw, whichever edge and balancer carried it", async () => {
+    server = await startServer({ rateLimits: LOW, trustProxy: 3 });
+    const viaRender = (client: string, cloudflare: string, balancer: string) => signupFrom(`${client}, ${cloudflare}, ${balancer}`);
+
+    expect((await viaRender('203.0.113.1', '172.69.129.131', '10.24.227.144')).status).toBe(400);
+    expect((await viaRender('203.0.113.1', '172.71.195.71', '10.28.148.188')).status).toBe(400);
+    expect((await viaRender('203.0.113.1', '162.158.54.41', '10.24.227.144')).status).toBe(429);
+    expect((await viaRender('203.0.113.2', '172.69.129.131', '10.24.227.144')).status).toBe(400); // another client
+    // A client that writes its own X-Forwarded-For is still counted by its real IP.
+    expect((await viaRender('198.51.100.9, 203.0.113.2', '162.158.54.41', '10.24.227.144')).status).toBe(400);
+    expect((await viaRender('198.51.100.10, 203.0.113.2', '172.71.195.71', '10.28.148.188')).status).toBe(429);
+  });
+
+  it('with TRUST_PROXY=1 behind such a chain, would count the load balancer, not the client (the release found this)', async () => {
+    server = await startServer({ rateLimits: LOW, trustProxy: 1 });
+
+    // Two different clients through the same balancer share one count...
+    expect((await signupFrom('203.0.113.1, 172.69.129.131, 10.24.227.144')).status).toBe(400);
+    expect((await signupFrom('203.0.113.2, 172.69.129.131, 10.24.227.144')).status).toBe(400);
+    expect((await signupFrom('203.0.113.3, 172.69.129.131, 10.24.227.144')).status).toBe(429);
+    // ...while one client through another balancer starts afresh.
+    expect((await signupFrom('203.0.113.1, 172.71.195.71, 10.28.148.188')).status).toBe(400);
+  });
 });
