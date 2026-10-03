@@ -394,7 +394,7 @@ Tasks are numbered in implementation order.
 
 - [x] A fresh clone can run `docker compose up`, `npm run migrate` and `npm test`, and everything passes. *(Task 11: README followed from a fresh clone and a clean Docker volume; 35/35 tests.)*
 - [x] `relay_dev` and `relay_test` are built from scratch by migrations. *(`0001_initial` via `npm run migrate` and the test global setup.)*
-- [x] CI is green on `main`: lint, typecheck, test and build for both projects. *(Every Phase 0 commit, through `6f4d188`.)*
+- [x] CI is green on `main`: lint, typecheck, test and build for both projects. *(Every Phase 0 commit, through `f4aaa2c`.)*
 - [x] A missing required env var stops startup and names the variable. *(Exit 1 with a fatal log naming it; values never shown.)*
 - [x] Every REST error uses the envelope, and the UI shows server error messages. *(Task 7 tests and browser check.)*
 - [x] A pool error no longer kills the process, and SIGTERM exits cleanly. *(Task 9: real `pg_terminate_backend` test; SIGTERM exit 0 in under 100 ms; clients reconnect.)*
@@ -443,16 +443,16 @@ Phase 0 was completed on 2026-09-27. One task per commit, all on `main`, all wit
 
 | Task | Commit | Notes and deviations from the plan |
 |---|---|---|
-| 1. TypeScript + ESLint | `ce3ae79` | Render build/start changed by the maintainer to `npm ci --include=dev && npm run build` / `npm start`. |
-| 2. Client lint fix | `e6444e7` | The context was split into three files (`AuthProvider.jsx`, `authContext.js`, `useAuth.js`), because exporting the context from the provider file fails the same lint rule. |
-| 3. CI | `f565fd9` | Node 24, `actions/checkout@v7` and `actions/setup-node@v7`. The optional deliberately red run was not performed. |
-| 4. Local Postgres + migrations | `04ed98c` | PostgreSQL 17 on host port **5433** (local Postgres installs use 5432). Local `DATABASE_URL` needs `?sslmode=disable`. SQL migrations (node-pg-migrate 9). |
-| 5. Test harness | `26309ad` | Vitest 5. The database guard has three layers: config, the pool's connection string, and an in-database check before `TRUNCATE`. |
-| 6. Environment validation | `2c6e15e` | `.env` loading moved into `config/env.ts`, because ES module imports run before the importing file's code. The server now needs the build (or `tsx`); plain `node index.js` no longer works. |
-| 7. Error handling | `b48e018` | Added `BAD_REQUEST` so body errors keep their 4xx status (e.g. 413). The login fallback message became "Login failed. Please try again." |
-| 8. Logging | `c9b0988` | Also redacts `req.headers.cookie` and Postgres `err.detail`; `dotenv` set to quiet; the config-failure line uses a default pino instance. |
-| 9. Graceful shutdown + pool error | `98c6d37` | Also redacts `err.client`: pg-pool attaches the whole client, including the database password, to pool errors. Found by the reproduction test. |
-| 10. Bug fixes | `6f4d188` | Reduced scope (see §12): audit §4.7 moved to Phase 1. |
+| 1. TypeScript + ESLint | `a1ddba0` | Render build/start changed by the maintainer to `npm ci --include=dev && npm run build` / `npm start`. |
+| 2. Client lint fix | `10a2284` | The context was split into three files (`AuthProvider.jsx`, `authContext.js`, `useAuth.js`), because exporting the context from the provider file fails the same lint rule. |
+| 3. CI | `c609450` | Node 24, `actions/checkout@v7` and `actions/setup-node@v7`. The optional deliberately red run was not performed. |
+| 4. Local Postgres + migrations | `de2e2f5` | PostgreSQL 17 on host port **5433** (local Postgres installs use 5432). Local `DATABASE_URL` needs `?sslmode=disable`. SQL migrations (node-pg-migrate 9). |
+| 5. Test harness | `575f8f9` | Vitest 5. The database guard has three layers: config, the pool's connection string, and an in-database check before `TRUNCATE`. |
+| 6. Environment validation | `b652c68` | `.env` loading moved into `config/env.ts`, because ES module imports run before the importing file's code. The server now needs the build (or `tsx`); plain `node index.js` no longer works. |
+| 7. Error handling | `ee006c2` | Added `BAD_REQUEST` so body errors keep their 4xx status (e.g. 413). The login fallback message became "Login failed. Please try again." |
+| 8. Logging | `523eeac` | Also redacts `req.headers.cookie` and Postgres `err.detail`; `dotenv` set to quiet; the config-failure line uses a default pino instance. |
+| 9. Graceful shutdown + pool error | `a0c1cb9` | Also redacts `err.client`: pg-pool attaches the whole client, including the database password, to pool errors. Found by the reproduction test. |
+| 10. Bug fixes | `f4aaa2c` | Reduced scope (see §12): audit §4.7 moved to Phase 1. |
 | 11. README/cleanup | *(this change)* | README verified end to end from a fresh clone and a clean Docker volume. |
 
 **Final state:** 35 server tests (auth, messages, sockets, errors, env, logger redaction, pool), CI green, lint/typecheck/build clean in both projects.

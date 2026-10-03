@@ -37,7 +37,7 @@ Phase 2 adds no conversation features, rooms other than session rooms, or messag
 
 ## 3. Starting state (verified 2026-09-27)
 
-- `main` at `a2d2dde`; CI green; 124 server tests. Production runs Phase 1 since the cutover on 2026-09-27, on a new Neon database over its direct (unpooled) connection. The old database is deleted.
+- `main` at `ede2dae`; CI green; 124 server tests. Production runs Phase 1 since the cutover on 2026-09-27, on a new Neon database over its direct (unpooled) connection. The old database is deleted.
 - **Auth today:** a JWT `{ id, username }`, valid 7 days and signed with `JWT_SECRET`, is returned in the signup and login bodies. The client keeps it in `localStorage` (`relay_token`, `relay_user`) and sends it as `Authorization: Bearer` (Axios interceptor) and in the socket handshake's `auth` (`client/src/socket.js`). It is verified in `server/middleware/verifyToken.js` (401 without a token, 403 `INVALID_TOKEN` when invalid) and in the `io.use` middleware of `server/socket/socketHandler.js`.
 - **CORS:** Express and Socket.io allow `CLIENT_URL` with credentials. There is no `Origin` check, no rate limiting and no helmet; responses carry `X-Powered-By: Express`.
 - **Logging:** pino-http logs response headers (`res.headers`), so a `Set-Cookie` carrying the session token would be written to the logs unless it is redacted. `req.headers.cookie` is already redacted.
@@ -91,7 +91,7 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - GitHub shows no Vercel deployment for `phase-2`, and the maintainer confirms that Render deployed nothing.
 
 **Definition of done**
-- [x] `phase-2` exists with a draft PR and green CI. *(PR #2; the first commit, `f3d603f`, passed CI.)*
+- [x] `phase-2` exists with a draft PR and green CI. *(PR #2; the first commit, `f6eb274`, passed CI.)*
 - [x] Pushes to `phase-2` deploy nothing. *(Vercel created no deployment for the branch; the maintainer confirmed that Render builds only `main`.)*
 
 ---
@@ -279,7 +279,7 @@ Why this order: M1 is the one unavoidable big step. Once the server stops return
 - [x] No session token appears in logs; `Set-Cookie` and `Cookie` are redacted. *(M1: `logger.test.ts` and the dev server's log.)*
 - [x] No JWT code, dependency or configuration remains. *(Searched in M6: only a comment about the old `localStorage` keys; `JWT_SECRET` leaves Render at §15 step 7.)*
 - [x] The chosen topology works locally in production mode, and `sslmode=verify-full` is enforced. *(M5; Render's build and start commands again from the fresh clone.)*
-- [x] Production is still on Phase 1 until the release: nothing from `phase-2` merged to `main`, and the production database untouched. *(`main` is `27fbe33`; PR #2 is a draft; the production database was never connected to.)*
+- [x] Production is still on Phase 1 until the release: nothing from `phase-2` merged to `main`, and the production database untouched. *(`main` is `42a8f93`; PR #2 is a draft; the production database was never connected to.)*
 - [x] Nothing from §14 was implemented.
 
 ---
@@ -346,17 +346,17 @@ Phase 2 was completed on 2026-09-28 on the `phase-2` branch, with draft PR #2 (`
 
 | Milestone | Commits | Notes |
 |---|---|---|
-| M0 — Branch and baseline | `f3d603f`, `93e2d87` | `client/vercel.json` turns off Vercel deployments of `phase-2`, which also gave GitHub the change it needs to open the PR (no empty commit). The approval and decisions are recorded in §16. |
-| M1 — Sessions replace JWT | `ab39a62`, `f4e094a`, `b12c09e`, `bf1a14e` | `cookie` 2.x instead of the planned 0.7.2, which has no TypeScript types (§2). `Set-Cookie` was redacted from the logs before any cookie existed; its test failed without the redaction. |
-| M2 — Session lifecycle on sockets | `4b67d76`, `6738cfc`, `5e1ff63`, `317c694` | Follow-up approved by the maintainer (`317c694`): a tab whose socket the server cut off asks `/api/auth/me`, so it goes to `/login` instead of sitting on a dead socket. |
-| M3 — CSRF, Origin checks and helmet | `67312c3`, `5987750` | Found: browsers send no `Origin` on a same-origin `GET`, so the polling handshake would fail the handshake check once client and API share an origin. Resolved in M5 (§16, decision 7). |
-| M4 — Passwords and rate limits | `ac7227f`, `ed0f00d` | The §10 test line "a correct password still gets through" is read as: successful logins do not count toward the limit. Once an IP and email are limited, even the correct password gets 429; otherwise the limit would not stop guessing. |
-| M5 — Production topology and database TLS | `41631c8`, `0913d54` | WebSocket only on server and client. `VITE_API_URL` is no longer read: without CORS, an API on another origin cannot work, and a leftover value in `client/.env.local` would have broken development. |
+| M0 — Branch and baseline | `f6eb274`, `c228b9d` | `client/vercel.json` turns off Vercel deployments of `phase-2`, which also gave GitHub the change it needs to open the PR (no empty commit). The approval and decisions are recorded in §16. |
+| M1 — Sessions replace JWT | `c86f508`, `e36e6f9`, `63a9820`, `625ee80` | `cookie` 2.x instead of the planned 0.7.2, which has no TypeScript types (§2). `Set-Cookie` was redacted from the logs before any cookie existed; its test failed without the redaction. |
+| M2 — Session lifecycle on sockets | `ecb1ba7`, `1c226a0`, `c212bf1`, `25743f1` | Follow-up approved by the maintainer (`25743f1`): a tab whose socket the server cut off asks `/api/auth/me`, so it goes to `/login` instead of sitting on a dead socket. |
+| M3 — CSRF, Origin checks and helmet | `b099009`, `a3c189f` | Found: browsers send no `Origin` on a same-origin `GET`, so the polling handshake would fail the handshake check once client and API share an origin. Resolved in M5 (§16, decision 7). |
+| M4 — Passwords and rate limits | `750e763`, `7a2e941` | The §10 test line "a correct password still gets through" is read as: successful logins do not count toward the limit. Once an IP and email are limited, even the correct password gets 429; otherwise the limit would not stop guessing. |
+| M5 — Production topology and database TLS | `232fb4e`, `7b2ae1b` | WebSocket only on server and client. `VITE_API_URL` is no longer read: without CORS, an API on another origin cannot work, and a leftover value in `client/.env.local` would have broken development. |
 | M6 — Verification and handoff | this milestone's commits | ADRs 0004 and 0005; README, `docs/v2-design.md` and this plan; the Vercel redirect (`client/vercel.json`, every path to the same path on Render, 307), resolved with Vercel's routing library (`/:path*` would have missed `/`, so the rule is `/(.*)`). |
 
-**Fresh-clone verification (M6).** A fresh clone of `phase-2` (`0913d54`) with M6's changes applied, and a clean Docker volume under a separate Compose project, so the maintainer's `relay_dev` was kept. Following the README: `npm install` in both projects; `docker compose up`; `.env` copied from `.env.example` unchanged; `npm run migrate` built `relay_dev` from `0001`–`0003`; `0003` rolled back and re-applied; `npm test` migrated `relay_test` and passed 208 of 208; lint, typecheck and build passed in both projects. The app, run with both `npm run dev`s through the Vite proxy, passed the §15 smoke tests in headless Chrome: two users chatting live, a sign-out in one tab sending the other tab to `/login` while another user kept chatting, the 10th wrong password answered as usual and the 11th with "Too many attempts", and the signup form asking for 8 characters. Render's build and start commands (§15, step 3), run from the clone's root, built both projects and served the client in production mode: `/` and `/chat` as `index.html` with `no-cache`, a missing asset as 404, `/api` JSON 404s, and signup setting `__Host-relay_session` with `HttpOnly`, `Secure` and `SameSite=Lax`.
+**Fresh-clone verification (M6).** A fresh clone of `phase-2` (`7b2ae1b`) with M6's changes applied, and a clean Docker volume under a separate Compose project, so the maintainer's `relay_dev` was kept. Following the README: `npm install` in both projects; `docker compose up`; `.env` copied from `.env.example` unchanged; `npm run migrate` built `relay_dev` from `0001`–`0003`; `0003` rolled back and re-applied; `npm test` migrated `relay_test` and passed 208 of 208; lint, typecheck and build passed in both projects. The app, run with both `npm run dev`s through the Vite proxy, passed the §15 smoke tests in headless Chrome: two users chatting live, a sign-out in one tab sending the other tab to `/login` while another user kept chatting, the 10th wrong password answered as usual and the 11th with "Too many attempts", and the signup form asking for 8 characters. Render's build and start commands (§15, step 3), run from the clone's root, built both projects and served the client in production mode: `/` and `/chat` as `index.html` with `no-cache`, a missing asset as 404, `/api` JSON 404s, and signup setting `__Host-relay_session` with `HttpOnly`, `Secure` and `SameSite=Lax`.
 
-**Production:** untouched. `main` is `27fbe33`; nothing from `phase-2` is merged; the production database was never connected to. The release (§15) is the maintainer's decision.
+**Production:** untouched. `main` is `42a8f93`; nothing from `phase-2` is merged; the production database was never connected to. The release (§15) is the maintainer's decision.
 
 **Known issues and notes**
 - `npm audit` reports 6 vulnerabilities (4 high) in `ws`, through Socket.io. They are on `main` as well, and the maintainer chose not to address them in Phase 2.
